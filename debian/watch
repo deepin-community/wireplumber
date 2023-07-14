@@ -1,0 +1,3 @@
+version=4
+https://gitlab.freedesktop.org/pipewire/wireplumber/tags?sort=updated_desc \
+ archive/@ANY_VERSION@/wireplumber-\d\S*@ARCHIVE_EXT@
