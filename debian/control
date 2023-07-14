@@ -1,15 +1,113 @@
-Source: template-repository
-Section: unknown
+Source: wireplumber
+Section: libs
 Priority: optional
-Maintainer: Tsic404 <liuheng@deepin.org>
-Build-Depends: debhelper (>= 11)
-Standards-Version: 4.1.3
-Homepage: https://github.com/deepin-community/template-repository
-#Vcs-Browser: https://salsa.debian.org/debian/deepin-community-template-repository
-#Vcs-Git: https://salsa.debian.org/debian/deepin-community-template-repository.git
+Maintainer: Utopia Maintenance Team <pkg-utopia-maintainers@alioth-lists.debian.net>
+Uploaders: Sjoerd Simons <sjoerd@debian.org>,
+           Dylan Aïssi <daissi@debian.org>
+Build-Depends: debhelper-compat (= 13),
+               doxygen,
+               gobject-introspection,
+               libgirepository1.0-dev,
+               libglib2.0-dev (>= 2.62),
+               liblua5.3-dev,
+               libpipewire-0.3-dev (>= 0.3.52),
+               libspa-0.2-dev,
+               libsystemd-dev,
+               meson (>= 0.59.0),
+               pkg-config,
+               python3-lxml,
+               systemd,
+# Only used for automated tests
+               dbus <!nocheck>,
+               pipewire (>= 0.3.52) <!nocheck>,
+# Only to generate the documentation
+               python3-breathe <!nodoc>,
+               python3-sphinx <!nodoc>,
+               python3-sphinx-rtd-theme <!nodoc>,
+Standards-Version: 4.6.2
+Homepage: https://gitlab.freedesktop.org/pipewire/wireplumber
+Vcs-Browser: https://salsa.debian.org/utopia-team/wireplumber
+Vcs-Git: https://salsa.debian.org/utopia-team/wireplumber.git
+Rules-Requires-Root: no
 
-Package: template-repository
-Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}
-Description: <insert up to 60 chars description>
- <insert long description, indented with spaces>
+Package: libwireplumber-0.4-0
+Architecture: linux-any
+Multi-Arch: same
+Depends: ${misc:Depends},
+         ${shlibs:Depends},
+Description: Shared libraries for WirePlumber
+ WirePlumber is a modular session / policy manager for PipeWire and a
+ GObject-based high-level library that wraps PipeWire's API, providing
+ convenience for writing the daemon's modules as well as external tools for
+ managing PipeWire.
+ .
+ This package contains the shared library and plugins.
+
+Package: libwireplumber-0.4-dev
+Section: libdevel
+Architecture: linux-any
+Multi-Arch: same
+Depends: ${misc:Depends},
+         libglib2.0-dev,
+         libpipewire-0.3-dev,
+         libwireplumber-0.4-0 (= ${binary:Version}),
+         gir1.2-wp-0.4 (= ${binary:Version}),
+Suggests: wireplumber-doc
+Description: Development files for WirePlumber
+ WirePlumber is a modular session / policy manager for PipeWire and a
+ GObject-based high-level library that wraps PipeWire's API, providing
+ convenience for writing the daemon's modules as well as external tools for
+ managing PipeWire.
+ .
+ This package contains the development files.
+
+Package: wireplumber
+Architecture: linux-any
+Depends: ${shlibs:Depends},
+         ${misc:Depends},
+         default-dbus-session-bus | dbus-session-bus,
+         libwireplumber-0.4-0 (= ${binary:Version}),
+         pipewire (>= 0.3.52),
+Recommends: pipewire-pulse
+Suggests: libspa-0.2-bluetooth,
+          libspa-0.2-libcamera,
+          wireplumber-doc
+Conflicts: pipewire-media-session
+Replaces: pipewire-media-session
+Section: video
+Description: modular session / policy manager for PipeWire
+ WirePlumber is a modular session / policy manager for PipeWire and a
+ GObject-based high-level library that wraps PipeWire's API, providing
+ convenience for writing the daemon's modules as well as external tools for
+ managing PipeWire.
+ .
+ This package contains the WirePlumber daemon and command-line utilities.
+
+Package: wireplumber-doc
+Section: doc
+Build-Profiles: <!nodoc>
+Architecture: all
+Multi-Arch: foreign
+Depends: ${misc:Depends}
+Description: modular session / policy manager for PipeWire - documentation
+ WirePlumber is a modular session / policy manager for PipeWire and a
+ GObject-based high-level library that wraps PipeWire's API, providing
+ convenience for writing the daemon's modules as well as external tools for
+ managing PipeWire.
+ .
+ This package contains the WirePlumber documentation.
+
+Package: gir1.2-wp-0.4
+Section: introspection
+Architecture: linux-any
+Multi-Arch: same
+Depends: ${misc:Depends},
+         ${gir:Depends},
+         libwireplumber-0.4-0 (= ${binary:Version}),
+Description: GObject introspection files for WirePlumber
+ WirePlumber is a modular session / policy manager for PipeWire and a
+ GObject-based high-level library that wraps PipeWire's API, providing
+ convenience for writing the daemon's modules as well as external tools for
+ managing PipeWire.
+ .
+ This package contains the GObject-introspection data in binary typelib format.
