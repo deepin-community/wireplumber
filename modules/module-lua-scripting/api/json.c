@@ -9,6 +9,9 @@
 #include <wp/wp.h>
 #include <wplua/wplua.h>
 
+#define WP_LOCAL_LOG_TOPIC log_topic_lua_scripting
+WP_LOG_TOPIC_EXTERN (log_topic_lua_scripting)
+
 /* API */
 
 static int
@@ -94,8 +97,8 @@ spa_json_is_object (lua_State *L)
   return 1;
 }
 
-static void
-push_luajson (lua_State *L, WpSpaJson *json)
+void
+push_luajson (lua_State *L, WpSpaJson *json, gint n_recursions)
 {
   /* Null */
   if (wp_spa_json_is_null (json)) {
@@ -123,28 +126,21 @@ push_luajson (lua_State *L, WpSpaJson *json)
     lua_pushnumber (L, value);
   }
 
-  /* String */
-  else if (wp_spa_json_is_string (json)) {
-    g_autofree gchar *value = wp_spa_json_parse_string (json);
-    g_warn_if_fail (value);
-    lua_pushstring (L, value);
-  }
-
   /* Array */
-  else if (wp_spa_json_is_array (json)) {
+  else if (wp_spa_json_is_array (json) && n_recursions > 0) {
     g_auto (GValue) item = G_VALUE_INIT;
     g_autoptr (WpIterator) it = wp_spa_json_new_iterator (json);
     guint i = 1;
     lua_newtable (L);
     for (; wp_iterator_next (it, &item); g_value_unset (&item)) {
       WpSpaJson *j = g_value_get_boxed (&item);
-      push_luajson (L, j);
+      push_luajson (L, j, n_recursions - 1);
       lua_rawseti (L, -2, i++);
     }
   }
 
   /* Object */
-  else if (wp_spa_json_is_object (json)) {
+  else if (wp_spa_json_is_object (json) && n_recursions > 0) {
     g_auto (GValue) item = G_VALUE_INIT;
     g_autoptr (WpIterator) it = wp_spa_json_new_iterator (json);
     lua_newtable (L);
@@ -152,24 +148,45 @@ push_luajson (lua_State *L, WpSpaJson *json)
       WpSpaJson *key = g_value_get_boxed (&item);
       g_autofree gchar *key_str = NULL;
       WpSpaJson *value = NULL;
-      g_warn_if_fail (wp_spa_json_is_string (key));
       key_str = wp_spa_json_parse_string (key);
       g_warn_if_fail (key_str);
       g_value_unset (&item);
       if (!wp_iterator_next (it, &item))
         break;
       value = g_value_get_boxed (&item);
-      push_luajson (L, value);
+      push_luajson (L, value, n_recursions - 1);
       lua_setfield (L, -2, key_str);
     }
   }
+
+  /* Otherwise always parse as String to allow parsing strings without quotes */
+  else {
+    g_autofree gchar *value = wp_spa_json_parse_string (json);
+    g_warn_if_fail (value);
+    lua_pushstring (L, value);
+  }
+}
+
+static int
+spa_json_merge (lua_State *L)
+{
+  WpSpaJson *a = wplua_checkboxed (L, 1, WP_TYPE_SPA_JSON);
+  WpSpaJson *b = wplua_checkboxed (L, 2, WP_TYPE_SPA_JSON);
+
+  WpSpaJson *merge =  wp_json_utils_merge_containers(a, b);
+  if(!merge)
+    luaL_error (L, "only Json container merge supported");
+
+  wplua_pushboxed (L, WP_TYPE_SPA_JSON, merge);
+  return 1;
 }
 
 static int
 spa_json_parse (lua_State *L)
 {
   WpSpaJson *json = wplua_checkboxed (L, 1, WP_TYPE_SPA_JSON);
-  push_luajson (L, json);
+  gint n_recursions = luaL_opt (L, luaL_checkinteger, 2, INT_MAX);
+  push_luajson (L, json, n_recursions);
   return 1;
 }
 
@@ -264,7 +281,7 @@ spa_json_array_new (lua_State *L)
           break;
         }
         default:
-          luaL_error (L, "Json does not support lua type ",
+          luaL_error (L, "Json does not support lua type %s",
               lua_typename(L, lua_type(L, -1)));
           break;
       }
@@ -310,7 +327,7 @@ spa_json_object_new (lua_State *L)
           break;
         }
         default:
-          luaL_error (L, "Json does not support lua type ",
+          luaL_error (L, "Json does not support lua type %s",
               lua_typename(L, lua_type(L, -1)));
           break;
       }
@@ -337,6 +354,7 @@ static const luaL_Reg spa_json_methods[] = {
   { "is_array", spa_json_is_array },
   { "is_object", spa_json_is_object },
   { "parse", spa_json_parse },
+  { "merge", spa_json_merge },
   { NULL, NULL }
 };
 

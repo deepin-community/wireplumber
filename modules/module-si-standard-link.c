@@ -11,6 +11,8 @@
 #include <spa/debug/types.h>
 #include <spa/param/audio/type-info.h>
 
+WP_DEFINE_LOCAL_LOG_TOPIC ("m-si-standard-link")
+
 #define SI_FACTORY_NAME "si-standard-link"
 
 struct _WpSiStandardLink
@@ -22,7 +24,6 @@ struct _WpSiStandardLink
   GWeakRef in_item;
   const gchar *out_item_port_context;
   const gchar *in_item_port_context;
-  gboolean passive;
   gboolean passthrough;
 
   /* activate */
@@ -68,7 +69,6 @@ si_standard_link_reset (WpSessionItem * item)
   g_weak_ref_set (&self->in_item, NULL);
   self->out_item_port_context = NULL;
   self->in_item_port_context = NULL;
-  self->passive = FALSE;
   self->passthrough = FALSE;
 
   WP_SESSION_ITEM_CLASS (si_standard_link_parent_class)->reset (item);
@@ -82,8 +82,8 @@ get_and_validate_item (WpProperties * props, const gchar *key)
 
   str = wp_properties_get (props, key);
   if (!str || sscanf(str, "%p", &res) != 1 || !WP_IS_SI_LINKABLE (res) ||
-      !(wp_object_get_active_features (WP_OBJECT (res)) &
-          WP_SESSION_ITEM_FEATURE_ACTIVE))
+      !(wp_object_test_active_features (WP_OBJECT (res),
+          WP_SESSION_ITEM_FEATURE_ACTIVE)))
     return NULL;
 
   return res;
@@ -104,22 +104,19 @@ si_standard_link_configure (WpSessionItem * item, WpProperties * p)
   if (!out_item)
     return FALSE;
   wp_properties_setf (si_props, "out.item.id", "%u",
-      wp_session_item_get_id (out_item));
+      wp_object_get_id (WP_OBJECT (out_item)));
 
   in_item = get_and_validate_item (si_props, "in.item");
   if (!in_item)
     return FALSE;
   wp_properties_setf (si_props, "in.item.id", "%u",
-      wp_session_item_get_id (in_item));
+      wp_object_get_id (WP_OBJECT (in_item)));
 
   self->out_item_port_context = wp_properties_get (si_props,
       "out.item.port.context");
 
   self->in_item_port_context = wp_properties_get (si_props,
       "in.item.port.context");
-
-  str = wp_properties_get (si_props, "passive");
-  self->passive = str && pw_properties_parse_bool (str);
 
   str = wp_properties_get (si_props, "passthrough");
   self->passthrough = str && pw_properties_parse_bool (str);
@@ -352,8 +349,6 @@ create_links (WpSiStandardLink * self, WpTransition * transition,
     wp_properties_setf (props, PW_KEY_LINK_OUTPUT_PORT, "%u", out_port.port_id);
     wp_properties_setf (props, PW_KEY_LINK_INPUT_NODE, "%u", best_port->node_id);
     wp_properties_setf (props, PW_KEY_LINK_INPUT_PORT, "%u", best_port->port_id);
-    if (self->passive)
-      wp_properties_set (props, PW_KEY_LINK_PASSIVE, "true");
 
     wp_debug_object (self, "create pw link: %u:%u (%s) -> %u:%u (%s)",
         out_port.node_id, out_port.port_id,
@@ -367,7 +362,7 @@ create_links (WpSiStandardLink * self, WpTransition * transition,
 
     /* activate to ensure it is created without errors */
     wp_object_activate_closure (WP_OBJECT (link),
-        WP_OBJECT_FEATURES_ALL & ~WP_LINK_FEATURE_ESTABLISHED, NULL,
+        WP_OBJECT_FEATURES_ALL, NULL,
         g_cclosure_new_object (
             (GCallback) on_link_activated, G_OBJECT (transition)));
 
@@ -390,11 +385,11 @@ get_ports_and_create_links (WpSiStandardLink *self, WpTransition *transition)
   si_in = WP_SI_LINKABLE (g_weak_ref_get (&self->in_item));
 
   if (!si_out || !si_in ||
-      !wp_session_item_is_configured (WP_SESSION_ITEM (si_out)) ||
-      !wp_session_item_is_configured (WP_SESSION_ITEM (si_in))) {
+      !wp_object_test_active_features (WP_OBJECT (si_out), WP_SESSION_ITEM_FEATURE_ACTIVE) ||
+      !wp_object_test_active_features (WP_OBJECT (si_in), WP_SESSION_ITEM_FEATURE_ACTIVE)) {
     wp_transition_return_error (transition,
         g_error_new (WP_DOMAIN_LIBRARY, WP_LIBRARY_ERROR_OPERATION_FAILED,
-            "si-standard-link: in/out items are not valid anymore"));
+            "some node was destroyed before the link was created"));
     return;
   }
 
@@ -497,11 +492,11 @@ on_main_adapter_ready (GObject *obj, GAsyncResult * res, gpointer p)
   main = g_object_get_data (G_OBJECT (transition), "adapter_main");
   other = g_object_get_data (G_OBJECT (transition), "adapter_other");
 
-  if (!wp_session_item_is_configured (WP_SESSION_ITEM (main->si)) ||
-      !wp_session_item_is_configured (WP_SESSION_ITEM (other->si))) {
+  if (!wp_object_test_active_features (WP_OBJECT (main->si), WP_SESSION_ITEM_FEATURE_ACTIVE) ||
+      !wp_object_test_active_features (WP_OBJECT (other->si), WP_SESSION_ITEM_FEATURE_ACTIVE)) {
     wp_transition_return_error (transition,
         g_error_new (WP_DOMAIN_LIBRARY, WP_LIBRARY_ERROR_OPERATION_FAILED,
-            "si-standard-link: in/out items are not valid anymore"));
+            "some node was destroyed before the link was created"));
     return;
   }
 
@@ -531,11 +526,11 @@ configure_and_link_adapters (WpSiStandardLink *self, WpTransition *transition)
   const gchar *str = NULL;
 
   if (!si_out || !si_in ||
-      !wp_session_item_is_configured (WP_SESSION_ITEM (si_out)) ||
-      !wp_session_item_is_configured (WP_SESSION_ITEM (si_in))) {
+      !wp_object_test_active_features (WP_OBJECT (si_out), WP_SESSION_ITEM_FEATURE_ACTIVE) ||
+      !wp_object_test_active_features (WP_OBJECT (si_in), WP_SESSION_ITEM_FEATURE_ACTIVE)) {
     wp_transition_return_error (transition,
         g_error_new (WP_DOMAIN_LIBRARY, WP_LIBRARY_ERROR_OPERATION_FAILED,
-            "si-standard-link: in/out items are not valid anymore"));
+            "some node was destroyed before the link was created"));
     return;
   }
 
@@ -548,13 +543,6 @@ configure_and_link_adapters (WpSiStandardLink *self, WpTransition *transition)
   out->is_device = !g_strcmp0 (str, "device");
   str = wp_session_item_get_property (WP_SESSION_ITEM (in->si), "item.node.type");
   in->is_device = !g_strcmp0 (str, "device");
-
-  str = wp_session_item_get_property (WP_SESSION_ITEM (out->si), "item.factory.name");
-  out->is_device = (str && !g_strcmp0 (str, "si-audio-endpoint") && !in->is_device)
-      || out->is_device;
-  str = wp_session_item_get_property (WP_SESSION_ITEM (in->si), "item.factory.name");
-  in->is_device = (str && !g_strcmp0 (str, "si-audio-endpoint") && !out->is_device)
-      || in->is_device;
 
   str = wp_session_item_get_property (WP_SESSION_ITEM (out->si), "stream.dont-remix");
   out->dont_remix = str && pw_properties_parse_bool (str);
@@ -628,11 +616,11 @@ si_standard_link_do_link (WpSiStandardLink *self, WpTransition *transition)
   g_autoptr (WpSessionItem) si_in = g_weak_ref_get (&self->in_item);
 
   if (!si_out || !si_in ||
-      !wp_session_item_is_configured (si_out) ||
-      !wp_session_item_is_configured (si_in)) {
+      !wp_object_test_active_features ((WP_OBJECT (si_out)), WP_SESSION_ITEM_FEATURE_ACTIVE) ||
+      !wp_object_test_active_features ((WP_OBJECT (si_in)), WP_SESSION_ITEM_FEATURE_ACTIVE)) {
     wp_transition_return_error (transition,
         g_error_new (WP_DOMAIN_LIBRARY, WP_LIBRARY_ERROR_OPERATION_FAILED,
-            "si-standard-link: in/out items are not valid anymore"));
+            "some node was destroyed before the link was created"));
     return;
   }
 
@@ -682,11 +670,11 @@ si_standard_link_enable_active (WpSessionItem *si, WpTransition *transition)
   si_out = g_weak_ref_get (&self->out_item);
   si_in = g_weak_ref_get (&self->in_item);
   if (!si_out || !si_in ||
-      !wp_session_item_is_configured (si_out) ||
-      !wp_session_item_is_configured (si_in)) {
+      !wp_object_test_active_features ((WP_OBJECT (si_out)), WP_SESSION_ITEM_FEATURE_ACTIVE) ||
+      !wp_object_test_active_features ((WP_OBJECT (si_in)), WP_SESSION_ITEM_FEATURE_ACTIVE)) {
     wp_transition_return_error (transition,
         g_error_new (WP_DOMAIN_LIBRARY, WP_LIBRARY_ERROR_OPERATION_FAILED,
-            "si-standard-link: in/out items are not valid anymore"));
+            "some node was destroyed before the link was created"));
     return;
   }
 
@@ -775,10 +763,9 @@ si_standard_link_link_init (WpSiLinkInterface * iface)
   iface->get_in_item = si_standard_link_get_in_item;
 }
 
-WP_PLUGIN_EXPORT gboolean
-wireplumber__module_init (WpCore * core, GVariant * args, GError ** error)
+WP_PLUGIN_EXPORT GObject *
+wireplumber__module_init (WpCore * core, WpSpaJson * args, GError ** error)
 {
-  wp_si_factory_register (core, wp_si_factory_new_simple (SI_FACTORY_NAME,
+  return G_OBJECT (wp_si_factory_new_simple (SI_FACTORY_NAME,
       si_standard_link_get_type ()));
-  return TRUE;
 }

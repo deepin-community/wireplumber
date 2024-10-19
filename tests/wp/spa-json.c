@@ -6,7 +6,7 @@
  * SPDX-License-Identifier: MIT
  */
 
-#include <wp/wp.h>
+#include "../common/test-log.h"
 
 static void
 test_spa_json_basic (void)
@@ -78,6 +78,13 @@ test_spa_json_basic (void)
     g_assert_nonnull (v3);
     g_assert_cmpstr (v3, ==,
         "looooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooong");
+
+    g_autoptr (WpSpaJson) jsons = wp_spa_json_new_string ("\v\v\v\v");
+    g_assert_nonnull (jsons);
+    g_assert_true (wp_spa_json_is_string (jsons));
+    g_autofree gchar *v4 = wp_spa_json_parse_string (jsons);
+    g_assert_nonnull (v4);
+    g_assert_cmpstr (v4, ==, "\v\v\v\v");
   }
 
   /* Array */
@@ -280,6 +287,10 @@ test_spa_json_object_builder_parser_iterator (void)
     wp_spa_json_builder_add_float (b, 0.12f);
     wp_spa_json_builder_add_property (b, "key-string");
     wp_spa_json_builder_add_string (b, "str");
+    wp_spa_json_builder_add_property (b, "key-empty-string");
+    wp_spa_json_builder_add_string (b, "");
+    wp_spa_json_builder_add_property (b, "key-special-char-string");
+    wp_spa_json_builder_add_string (b, "\v\v\v\v");
     json = wp_spa_json_builder_end (b);
   }
 
@@ -321,6 +332,20 @@ test_spa_json_object_builder_parser_iterator (void)
     g_autofree gchar *v_string = wp_spa_json_parser_get_string (p);
     g_assert_nonnull (v_string);
     g_assert_cmpstr (v_string, ==, "str");
+
+    g_autofree gchar *key_empty_string = wp_spa_json_parser_get_string (p);
+    g_assert_nonnull (key_empty_string);
+    g_assert_cmpstr (key_empty_string, ==, "key-empty-string");
+    g_autofree gchar *v_empty_string = wp_spa_json_parser_get_string (p);
+    g_assert_nonnull (v_empty_string);
+    g_assert_cmpstr (v_empty_string, ==, "");
+
+    g_autofree gchar *key_special_char_string = wp_spa_json_parser_get_string (p);
+    g_assert_nonnull (key_special_char_string);
+    g_assert_cmpstr (key_special_char_string, ==, "key-special-char-string");
+    g_autofree gchar *v_special_char_string = wp_spa_json_parser_get_string (p);
+    g_assert_nonnull (v_special_char_string);
+    g_assert_cmpstr (v_special_char_string, ==, "\v\v\v\v");
 
     wp_spa_json_parser_end (p);
     g_assert_false (wp_spa_json_parser_get_null (p));
@@ -443,6 +468,54 @@ test_spa_json_object_builder_parser_iterator (void)
     g_autofree gchar *v = wp_spa_json_parse_string (j);
     g_assert_nonnull (v);
     g_assert_cmpstr (v, ==, "str");
+    g_value_unset (&next);
+  }
+
+  {
+    GValue next = G_VALUE_INIT;
+    g_assert_true (wp_iterator_next (it, &next));
+    WpSpaJson *j = g_value_get_boxed (&next);
+    g_assert_nonnull (j);
+    g_assert_true (wp_spa_json_is_string (j));
+    g_autofree gchar *v = wp_spa_json_parse_string (j);
+    g_assert_nonnull (v);
+    g_assert_cmpstr (v, ==, "key-empty-string");
+    g_value_unset (&next);
+  }
+
+  {
+    GValue next = G_VALUE_INIT;
+    g_assert_true (wp_iterator_next (it, &next));
+    WpSpaJson *j = g_value_get_boxed (&next);
+    g_assert_nonnull (j);
+    g_assert_true (wp_spa_json_is_string (j));
+    g_autofree gchar *v = wp_spa_json_parse_string (j);
+    g_assert_nonnull (v);
+    g_assert_cmpstr (v, ==, "");
+    g_value_unset (&next);
+  }
+
+  {
+    GValue next = G_VALUE_INIT;
+    g_assert_true (wp_iterator_next (it, &next));
+    WpSpaJson *j = g_value_get_boxed (&next);
+    g_assert_nonnull (j);
+    g_assert_true (wp_spa_json_is_string (j));
+    g_autofree gchar *v = wp_spa_json_parse_string (j);
+    g_assert_nonnull (v);
+    g_assert_cmpstr (v, ==, "key-special-char-string");
+    g_value_unset (&next);
+  }
+
+  {
+    GValue next = G_VALUE_INIT;
+    g_assert_true (wp_iterator_next (it, &next));
+    WpSpaJson *j = g_value_get_boxed (&next);
+    g_assert_nonnull (j);
+    g_assert_true (wp_spa_json_is_string (j));
+    g_autofree gchar *v = wp_spa_json_parse_string (j);
+    g_assert_nonnull (v);
+    g_assert_cmpstr (v, ==, "\v\v\v\v");
     g_value_unset (&next);
   }
 
@@ -744,7 +817,7 @@ static void
 test_spa_json_nested2 (void)
 {
   const gchar json_str[] = "[[[[1], [2]], [3]], [4]]";
-  g_autoptr (WpSpaJson) json = wp_spa_json_new_from_string (json_str);
+  g_autoptr (WpSpaJson) json = wp_spa_json_new_wrap_string (json_str);
 
   g_assert_true (wp_spa_json_is_array (json));
   g_assert_cmpmem (wp_spa_json_get_data (json), wp_spa_json_get_size (json),
@@ -914,7 +987,7 @@ test_spa_json_nested3 (void)
 {
   const gchar json_str[] =
       "{ test-setting-json3: { key1: \"value\", key2: 2, key3: true } }";
-  g_autoptr (WpSpaJson) json = wp_spa_json_new_from_string (json_str);
+  g_autoptr (WpSpaJson) json = wp_spa_json_new_wrap_string (json_str);
   g_assert_nonnull (json);
   g_assert_true (wp_spa_json_is_object (json));
 
@@ -950,7 +1023,7 @@ test_spa_json_ownership (void)
 
   {
     const gchar json_str[] = "{\"name\":\"John\", \"age\":30, \"car\":null}";
-    json = wp_spa_json_new_from_string (json_str);
+    json = wp_spa_json_new_wrap_string (json_str);
     g_assert_nonnull (json);
 
     g_assert_false (wp_spa_json_is_unique_owner (json));
@@ -1047,7 +1120,7 @@ test_spa_json_spa_format (void)
   g_autoptr (WpSpaJson) json = NULL;
 
   const gchar json_str[] = "{ name = John age:30, \"car\" null }";
-  json = wp_spa_json_new_from_string (json_str);
+  json = wp_spa_json_new_wrap_string (json_str);
   g_assert_nonnull (json);
 
   g_assert_true (wp_spa_json_is_object (json));
@@ -1129,7 +1202,7 @@ static void
 test_spa_json_to_string (void)
 {
   const gchar json_str[] = "[{\"key0\":\"val0\"}, {\"key1\":\"val1\"}]";
-  g_autoptr (WpSpaJson) json = wp_spa_json_new_from_string (json_str);
+  g_autoptr (WpSpaJson) json = wp_spa_json_new_wrap_string (json_str);
   g_assert_nonnull (json);
 
   {
@@ -1182,6 +1255,57 @@ test_spa_json_to_string (void)
   }
 }
 
+static void
+test_spa_json_undefined_parser (void)
+{
+  const gchar json_str[] = "key0 = val0, key.array = [ val1 val2 ], "
+      "key.object = { key-boolean = false, key-int = 8, key-array = [ 2 4 ] }";
+  g_autoptr (WpSpaJson) json = wp_spa_json_new_wrap_string (json_str);
+  g_assert_nonnull (json);
+
+  g_assert_false (wp_spa_json_is_container (json));
+
+  g_autoptr (WpSpaJsonParser) p = wp_spa_json_parser_new_undefined (json);
+  g_assert_nonnull (p);
+
+  {
+    g_autofree gchar *k = wp_spa_json_parser_get_string (p);
+    g_assert_cmpstr (k, ==, "key0");
+  }
+  {
+    g_autofree gchar *v = wp_spa_json_parser_get_string (p);
+    g_assert_cmpstr (v, ==, "val0");
+  }
+  {
+    g_autofree gchar *k = wp_spa_json_parser_get_string (p);
+    g_assert_cmpstr (k, ==, "key.array");
+  }
+  {
+    g_autoptr (WpSpaJson) v = wp_spa_json_parser_get_json (p);
+    g_autofree gchar *str = wp_spa_json_to_string (v);
+    g_assert_cmpstr (str, ==, "[ val1 val2 ]");
+    g_assert_true (wp_spa_json_is_array (v));
+  }
+  {
+    g_autofree gchar *k = wp_spa_json_parser_get_string (p);
+    g_assert_cmpstr (k, ==, "key.object");
+  }
+  {
+    g_autoptr (WpSpaJson) v = wp_spa_json_parser_get_json (p);
+    g_autofree gchar *str = wp_spa_json_to_string (v);
+    g_assert_cmpstr (str, ==, "{ key-boolean = false, key-int = 8, key-array = [ 2 4 ] }");
+    g_assert_true (wp_spa_json_is_object (v));
+  }
+  {
+    g_autofree gchar *k = wp_spa_json_parser_get_string (p);
+    g_assert_null (k);
+  }
+  {
+    g_autofree gchar *k = wp_spa_json_parser_get_string (p);
+    g_assert_null (k);
+  }
+}
+
 int
 main (int argc, char *argv[])
 {
@@ -1199,6 +1323,8 @@ main (int argc, char *argv[])
   g_test_add_func ("/wp/spa-json/ownership", test_spa_json_ownership);
   g_test_add_func ("/wp/spa-json/spa-format", test_spa_json_spa_format);
   g_test_add_func ("/wp/spa-json/to-string", test_spa_json_to_string);
+  g_test_add_func ("/wp/spa-json/undefined-parser",
+      test_spa_json_undefined_parser);
 
   return g_test_run ();
 }

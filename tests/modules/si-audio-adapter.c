@@ -13,6 +13,19 @@ typedef struct {
 } TestFixture;
 
 static void
+on_plugin_loaded (WpCore * core, GAsyncResult * res, TestFixture *f)
+{
+  gboolean loaded;
+  GError *error = NULL;
+
+  loaded = wp_core_load_component_finish (core, res, &error);
+  g_assert_no_error (error);
+  g_assert_true (loaded);
+
+  g_main_loop_quit (f->base.loop);
+}
+
+static void
 test_si_audio_adapter_setup (TestFixture * f, gconstpointer user_data)
 {
   wp_base_test_fixture_setup (&f->base, 0);
@@ -24,16 +37,20 @@ test_si_audio_adapter_setup (TestFixture * f, gconstpointer user_data)
 
     g_assert_cmpint (pw_context_add_spa_lib (f->base.server.context,
             "audiotestsrc", "audiotestsrc/libspa-audiotestsrc"), ==, 0);
+    if (!test_is_spa_lib_installed (&f->base, "audiotestsrc")) {
+      g_test_skip ("The pipewire audiotestsrc factory was not found");
+      return;
+    }
     g_assert_nonnull (pw_context_load_module (f->base.server.context,
             "libpipewire-module-spa-node-factory", NULL, NULL));
     g_assert_nonnull (pw_context_load_module (f->base.server.context,
             "libpipewire-module-adapter", NULL, NULL));
   }
   {
-    g_autoptr (GError) error = NULL;
     wp_core_load_component (f->base.core,
-        "libwireplumber-module-si-audio-adapter", "module", NULL, &error);
-    g_assert_no_error (error);
+        "libwireplumber-module-si-audio-adapter", "module", NULL, NULL, NULL,
+        (GAsyncReadyCallback) on_plugin_loaded, f);
+    g_main_loop_run (f->base.loop);
   }
 }
 

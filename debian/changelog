@@ -1,3 +1,139 @@
+wireplumber (0.5.6-1) unstable; urgency=medium
+
+  * New upstream version
+  * Update symbols file
+
+ -- Dylan Aïssi <daissi@debian.org>  Fri, 06 Sep 2024 09:40:36 +0200
+
+wireplumber (0.5.5-1) unstable; urgency=medium
+
+  * New upstream version
+      - Fix crashes in the Bluetooth HSP/HFP autoswitch (Closes: #1074379)
+
+ -- Dylan Aïssi <daissi@debian.org>  Fri, 28 Jun 2024 21:25:07 +0200
+
+wireplumber (0.5.4-1) unstable; urgency=medium
+
+  * New upstream version
+  * Update symbols file
+
+ -- Dylan Aïssi <daissi@debian.org>  Wed, 26 Jun 2024 21:35:39 +0200
+
+wireplumber (0.5.3-1) unstable; urgency=medium
+
+  * New upstream version
+  * Update symbols file
+
+ -- Dylan Aïssi <daissi@debian.org>  Mon, 03 Jun 2024 10:09:48 +0200
+
+wireplumber (0.5.2-3) unstable; urgency=medium
+
+  * Fix debian/watch
+  * Update tests dependencies: switch to libwireplumber-0.5-dev and pkgconf
+  * Update debian/tests/build to use wireplumber-0.5
+
+ -- Dylan Aïssi <daissi@debian.org>  Fri, 10 May 2024 11:57:30 +0200
+
+wireplumber (0.5.2-2) unstable; urgency=medium
+
+  * Upload to unstable
+
+ -- Dylan Aïssi <daissi@debian.org>  Mon, 06 May 2024 10:22:38 +0200
+
+wireplumber (0.5.2-1) experimental; urgency=medium
+
+  * New upstream version
+  * Standards-Version: 4.7.0 (no changes needed)
+
+ -- Dylan Aïssi <daissi@debian.org>  Mon, 22 Apr 2024 18:25:04 +0200
+
+wireplumber (0.5.1-1) experimental; urgency=medium
+
+  * New upstream version
+  * Add asahi-audio << 2.0 in Breaks, see #1067660
+  * Add debian/NEWS to warn users about incompatible conf files
+
+ -- Dylan Aïssi <daissi@debian.org>  Wed, 03 Apr 2024 10:45:11 +0200
+
+wireplumber (0.5.0-1) experimental; urgency=medium
+
+  * New upstream version
+  * Update symbols file
+  * Bump minimum pipewire to 1.0.2
+  * Bump minimum glib to 2.68
+  * Switch Build-Deps from systemd to systemd-dev (Closes: #1060497)
+  * Drop useless comments in debian/control
+  * Mark doxygen and python3-lxml as <!nodoc>
+  * Use pkgconf instead of the transitional pkg-config
+  * Update copyright file
+
+ -- Dylan Aïssi <daissi@debian.org>  Mon, 18 Mar 2024 21:47:47 +0100
+
+wireplumber (0.4.90-1) experimental; urgency=medium
+
+  * New upstream version 0.4.90 (0.5.0 release candidate 1)
+  * Don't install conf files in /usr/share/pipewire/, it was reverted upstream
+  * Update symbols file
+
+ -- Dylan Aïssi <daissi@debian.org>  Wed, 06 Mar 2024 10:16:36 +0100
+
+wireplumber (0.4.82-1) experimental; urgency=medium
+
+  * New upstream version 0.4.82 (0.5.0 pre-release 2)
+  * Update symbols file
+  * Refresh Remove-privacy-breach-documentation.patch
+
+ -- Dylan Aïssi <daissi@debian.org>  Thu, 15 Feb 2024 11:24:41 +0100
+
+wireplumber (0.4.81-1) experimental; urgency=medium
+
+  * New upstream version: This is a preliminary release of WirePlumber 0.5.0.
+  * Install conf files in /usr/share/pipewire/
+  * Bump SONAME to libwireplumber-0.5
+  * Update symbols file
+  * Refresh patches
+
+ -- Dylan Aïssi <daissi@debian.org>  Fri, 05 Jan 2024 11:40:34 +0100
+
+wireplumber (0.4.17-1) unstable; urgency=medium
+
+  * New upstream version
+
+ -- Dylan Aïssi <daissi@debian.org>  Mon, 04 Dec 2023 10:18:53 +0100
+
+wireplumber (0.4.16-1) unstable; urgency=medium
+
+  [ Dylan Aïssi ]
+  * New upstream version
+  * Drop patch included in upstream release:
+      - policy-dsp: add ability to hide parent nodes
+  * Bump minimum pipewire to 0.3.68
+  * Update symbols file
+
+  [ Andreas Henriksson ]
+  * Use ${gir:Depends} and ${gir:Provides}
+
+ -- Dylan Aïssi <daissi@debian.org>  Wed, 22 Nov 2023 17:59:06 +0100
+
+wireplumber (0.4.15-2) unstable; urgency=medium
+
+  * Team upload.
+  * Cherry-pick upstream patch for ability to hide parent nodes
+
+ -- Andreas Henriksson <andreas@fatal.se>  Mon, 13 Nov 2023 18:14:25 +0100
+
+wireplumber (0.4.15-1) unstable; urgency=medium
+
+  [ Dylan Aïssi ]
+  * New upstream version
+  * Install zsh completions file
+  * Update symbols file
+
+  [ Lena Voytek ]
+  * d/control: Upgrade lua build dependency to 5.4
+
+ -- Dylan Aïssi <daissi@debian.org>  Fri, 13 Oct 2023 12:06:12 +0200
+
 wireplumber (0.4.14-4) unstable; urgency=medium
 
   * Wireplumber depends on 'default-dbus-session-bus | dbus-session-bus'

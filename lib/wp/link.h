@@ -16,6 +16,8 @@ G_BEGIN_DECLS
 /*!
  * \brief The state of the link
  * \ingroup wplink
+ *
+ * \since 0.4.11
  */
 typedef enum {
   WP_LINK_STATE_ERROR = -2,     /*!< the link is in error */
@@ -26,15 +28,6 @@ typedef enum {
   WP_LINK_STATE_PAUSED = 3,     /*!< the link is paused */
   WP_LINK_STATE_ACTIVE = 4,     /*!< the link is active */
 } WpLinkState;
-
-/*!
- * \brief An extension of WpProxyFeatures
- * \ingroup wplink
- */
-typedef enum { /*< flags >*/
-  /*! waits until the state of the link is >= PAUSED */
-  WP_LINK_FEATURE_ESTABLISHED = (WP_PROXY_FEATURE_CUSTOM_START << 0),
-} WpLinkFeatures;
 
 /*!
  * \brief The WpLink GType
