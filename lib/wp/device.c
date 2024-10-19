@@ -6,8 +6,6 @@
  * SPDX-License-Identifier: MIT
  */
 
-#define G_LOG_DOMAIN "wp-device"
-
 #include "device.h"
 #include "node.h"
 #include "core.h"
@@ -19,6 +17,8 @@
 #include <spa/debug/types.h>
 #include <spa/monitor/device.h>
 #include <spa/utils/result.h>
+
+WP_DEFINE_LOCAL_LOG_TOPIC ("wp-device")
 
 /*! \defgroup wpdevice WpDevice */
 /*!
@@ -361,10 +361,21 @@ spa_device_event_object_info (void *data, uint32_t id,
     type = spa_debug_type_short_name (info->type);
     props = wp_properties_new_wrap_dict (info->props);
 
+    wp_debug_object (self, "object info: id:%u type:%s factory:%s",
+        id, type, info->factory_name);
+
+    if (id < self->managed_objs->len &&
+        g_ptr_array_index (self->managed_objs, id) != NULL) {
+      wp_debug_object (self, "object already exists, removing");
+      g_signal_emit (self, spa_device_signals[SIGNAL_OBJECT_REMOVED], 0, id);
+      wp_spa_device_store_managed_object (self, id, NULL);
+    }
+
     g_signal_emit (self, spa_device_signals[SIGNAL_CREATE_OBJECT], 0,
         id, type, info->factory_name, props);
   }
   else {
+    wp_debug_object (self, "object removed: id:%u", id);
     g_signal_emit (self, spa_device_signals[SIGNAL_OBJECT_REMOVED], 0, id);
     wp_spa_device_store_managed_object (self, id, NULL);
   }
@@ -616,7 +627,7 @@ wp_spa_device_new_from_spa_factory (WpCore * core,
   handle = pw_context_load_spa_handle (pw_context, factory_name,
       props ? wp_properties_peek_dict (props) : NULL);
   if (!handle) {
-    wp_message ("SPA handle '%s' could not be loaded; is it installed?",
+    wp_notice ("SPA handle '%s' could not be loaded; is it installed?",
         factory_name);
     return NULL;
   }

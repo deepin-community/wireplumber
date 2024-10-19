@@ -1,5 +1,520 @@
+WirePlumber 0.5.6
+~~~~~~~~~~~~~~~~~
+
+Additions:
+
+  - Implemented before/after dependencies for components, to ensure correct
+    load order in custom configurations (#600)
+
+  - Implemented profile inheritance in the configuration file. This allows
+    profiles to inherit all the feature specifications of other profiles, which
+    is useful to avoid copying long lists of features just to make small changes
+
+  - Added multi-instance configuration profiles, tested and documented them
+
+  - Added a ``main-systemwide`` profile, which is now the default for instances
+    started via the system-wide systemd service and disables features that
+    depend on the user session (#608)
+
+  - Added a ``wp_core_connect_fd`` method, which allows making a connection to
+    PipeWire via an existing open socket (useful for portal-based connections)
+
+Fixes:
+
+  - The Bluetooth auto-switch script now uses the common event source object
+    managers, which should improve its stability (!663)
+
+  - Fix an issue where switching between Bluetooth profiles would temporarily
+    link active audio streams to the internal speakers (!655)
+
+Past releases
+~~~~~~~~~~~~~
+
+WirePlumber 0.5.5
+.................
+
+Highlights:
+
+  - Hotfix release to address crashes in the Bluetooth HSP/HFP autoswitch
+    functionality that were side-effects of some changes that were part
+    of the role-based linking policy (#682)
+
+Improvements:
+
+  - wpctl will now properly show a '*' in front of sink filters when they are
+    selected as the default sink (!660)
+
+WirePlumber 0.5.4
+.................
+
+Highlights:
+
+  - Refactored the role-based linking policy (previously known also as
+    "endpoints" or "virtual items" policy) to blend in with the standard desktop
+    policy. It is now possible use role-based sinks alongside standard desktop
+    audio operations and they will only be used for streams that have a
+    "media.role" defined. It is also possible to force streams to have a
+    media.role, using a setting. Other features include: blending with smart
+    filters in the graph and allowing hardware DSP nodes to be also used easily
+    instead of requiring software loopbacks for all roles. (#610, !649)
+
+Improvements:
+
+  - Filters that are not declared as smart will now behave again as normal
+    application streams, instead of being treated sometimes differently (!657)
+
+Fixes:
+
+  - Fixed an issue that would cause WirePlumber to crash at startup if an
+    empty configuration file was present in one of the search paths (#671)
+
+  - Fixed Bluetooth profile auto-switching when a filter is permanently linked
+    to the Bluetooth source (!650)
+
+  - Fixed an issue in the software-dsp script that would cause DSP filters to
+    stay around and cause issues after their device node was destroyed (!651)
+
+  - Fixed an issue in the autoswitch-bluetooth-profile script that could cause
+    an infinite loop of switching between profiles (!652, #617)
+
+  - Fixed a rare issue that could cause WirePlumber to crash when dealing with
+    a device object that didn't have the "device.name" property set (#674)
+
+WirePlumber 0.5.3
+.................
+
+Fixes:
+
+  - Fixed a long standing issue that would cause many device nodes to have
+    inconsistent naming, with a '.N' suffix (where N is a number >= 2) being
+    appended at seemingly random times (#500)
+
+  - Fixed an issue that would cause unavailable device profiles to be selected
+    if they were previously stored in the state file, sometimes requiring users
+    to manually remove the state file to get things working again (#613)
+
+  - Fixed an occasional crash that could sometimes be triggered by hovering
+    the volume icon on the KDE taskbar, and possibly other similar actions
+    (#628, !644)
+
+  - Fixed camera device deduplication logic when the same device is available
+    through both V4L2 and libcamera, and the libcamera one groups multiple V4L2
+    devices together (#623, !636)
+
+  - Fixed applying the default volume on streams that have no volume previously
+    stored in the state file (#655)
+
+  - Fixed an issue that would prevent some camera nodes - in some cases -
+    from being destroyed when the camera device is removed (#640)
+
+  - Fixed an issue that would cause video stream nodes to be linked with audio
+    smart filters, if smart audio filters were configured (!647)
+
+  - Fixed an issue that would cause WP to re-activate device profiles even
+    though they were already active (!639)
+
+  - Configuration files in standard JSON format (starting with a '{', among
+    other things) are now correctly parsed (#633)
+
+  - Fixed overriding non-container values when merging JSON objects (#653)
+
+  - Functions marked with WP_PRIVATE_API are now also marked as
+    non-introspectable in the gobject-introspection metadata (#599)
+
+Improvements:
+
+  - Logging on the systemd journal now includes the log topic and also the log
+    level and location directly on the message string when the log level is
+    high enough, which is useful for gathering additional context in logs
+    submitted by users (!640)
+
+  - Added a video-only profile in wireplumber.conf, for systems where only
+    camera & screensharing are to be used (#652)
+
+  - Improved seat state monitoring so that Bluetooth devices are only enabled
+    when the user is active on a local seat, instead of allowing remote users
+    as well (!641)
+
+  - Improved how main filter nodes are detected for the smart filters (!642)
+
+  - Added Lua method to merge JSON containers (!637)
+
+WirePlumber 0.5.2
+.................
+
+Highlights:
+
+  - Added support for loading configuration files other than the default
+    wireplumber.conf within Lua scripts (!629)
+
+  - Added support for loading single-section configuration files, without
+    fragments (!629)
+
+  - Updated the node.software-dsp script to be able to load filter-chain graphs
+    from external configuration files, which is needed for Asahi Linux audio
+    DSP configuration (!629)
+
+Fixes:
+
+  - Fixed destroying camera nodes when the camera device is removed (#627, !631)
+
+  - Fixed an issue with Bluetooth BAP device set naming (!632)
+
+  - Fixed an issue caused by the pipewire event loop not being "entered" as
+    expected (!634, #638)
+
+  - A false positive warning about no modules being loaded is now suppressed
+    when using libpipewire >= 1.0.5 (#620)
+
+  - Default nodes can now be selected using priority.driver when
+    priority.session is not set (#642)
+
+Changes:
+
+  - The library version is now generated following pipewire's versioning scheme:
+    libwireplumber-0.5.so.0.5.2 becomes libwireplumber-0.5.so.0.0502.0 (!633)
+
+WirePlumber 0.5.1
+.................
+
+Highlights:
+
+  - Added a guide documenting how to migrate configuration from 0.4 to 0.5,
+    also available online at:
+    https://pipewire.pages.freedesktop.org/wireplumber/daemon/configuration/migration.html
+    If you are packaging WirePlumber for a distribution, please consider
+    informing users about this.
+
+Fixes:
+
+  - Fixed an odd issue where microphones would stop being usable when a
+    Bluetooth headset was connected in the HSP/HFP profile (#598, !620)
+
+  - Fixed an issue where it was not possible to store the volume/mute state of
+    system notifications (#604)
+
+  - Fixed a rare crash that could occur when a node was destroyed while the
+    'select-target' event was still being processed (!621)
+
+  - Fixed deleting all the persistent settings via ``wpctl --delete`` (!622)
+
+  - Fixed using Bluetooth autoswitch with A2DP profiles that have an input route
+    (!624)
+
+  - Fixed sending an error to clients when linking fails due to a format
+    mismatch (!625)
+
+Additions:
+
+  - Added a check that prints a verbose warning when old-style 0.4.x Lua
+    configuration files are found in the system. (#611)
+
+  - The "policy-dsp" script, used in Asahi Linux to provide a software DSP
+    for Apple Sillicon devices, has now been ported to 0.5 properly and
+    documented (#619, !627)
+
+WirePlumber 0.5.0
+.................
+
+Changes:
+
+  - Bumped the minimum required version of PipeWire to 1.0.2, because we
+    make use of the 'api.bluez5.internal' property of the BlueZ monitor (!613)
+
+  - Improved the naming of Bluetooth nodes when the auto-switching loopback
+    node is present (!614)
+
+  - Updated the documentation on "settings", the Bluetooth monitor, the Access
+    configuration, the file search locations and added a document on how to
+    modify the configuration file (#595, !616)
+
+Fixes:
+
+  - Fixed checking for available routes when selecting the default node (!609)
+
+  - Fixed an issue that was causing an infinite loop storing routes in the
+    state file (!610)
+
+  - Fixed the interpretation of boolean values in the alsa monitor rules (#586, !611)
+
+  - Fixes a Lua crash when we have 2 smart filters, one with a target and one
+    without (!612)
+
+  - Fixed an issue where the default nodes would not be updated when the
+    currently selected default node became unavailable (#588, !615)
+
+  - Fixed an issue that would cause the Props (volume, mute, etc) of loopbacks
+    and other filter nodes to not be restored at startup (#577, !617)
+
+  - Fixed how some constants were represented in the gobject-introspection file,
+    mostly by converting them from defines to enums (#540, #591)
+
+  - Fixed an issue using WirePlumber headers in other projects due to
+    redefinition of G_LOG_DOMAIN (#571)
+
+WirePlumber 0.4.90
+..................
+
+This is the first release candidate (RC1) of WirePlumber 0.5.0.
+
+Highlights:
+
+  - The configuration system has been changed back to load files from the
+    WirePlumber configuration directories, such as ``/etc/wireplumber`` and
+    ``$XDG_CONFIG_HOME/wireplumber``, unlike in the pre-releases. This was done
+    because issues were observed with installations that use a different prefix
+    for pipewire and wireplumber. If you had a ``wireplumber.conf`` file in
+    ``/etc/pipewire`` or ``$XDG_CONFIG_HOME/pipewire``, you should move it to
+    ``/etc/wireplumber`` or ``$XDG_CONFIG_HOME/wireplumber`` respectively (!601)
+
+  - The internal base directories lookup system now also respects the
+    ``XDG_CONFIG_DIRS`` and ``XDG_DATA_DIRS`` environment variables, and their
+    default values as per the XDG spec, so it is possible to install
+    configuration files also in places like ``/etc/xdg/wireplumber`` and
+    override system-wide data paths (!601)
+
+  - ``wpctl`` now has a ``settings`` subcommand to show, change and delete
+    settings at runtime. This comes with changes in the ``WpSettings`` system to
+    validate settings using a schema that is defined in the configuration file.
+    The schema is also exported on a metadata object, so it is available to any
+    client that wants to expose WirePlumber settings (!599, !600)
+
+  - The ``WpConf`` API has changed to not be a singleton and support opening
+    arbitrary config files. The main config file now needs to be opened prior to
+    creating a ``WpCore`` and passed to the core using a property. The core uses
+    that without letting the underlying ``pw_context`` open and read the default
+    ``client.conf``. The core also closes the ``WpConf`` after all components
+    are loaded, which means all the config loading is done early at startup.
+    Finally, ``WpConf`` loads all sections lazily, keeping the underlying files
+    memory mapped until it is closed and merging them on demand (!601, !606)
+
+WirePlumber 0.4.82
+..................
+
+This is a second pre-release of WirePlumber 0.5.0, made available for testing
+purposes. This is not API/ABI stable yet and there is still pending work to do
+before the final 0.5.0 release, both in the codebase and the documentation.
+
+Highlights:
+
+  - Bluetooth auto-switching is now implemented with a virtual source node. When
+    an application links to it, the actual device switches to the HSP/HFP
+    profile to provide the real audio stream. This is a more robust solution
+    that works with more applications and is more user-friendly than the
+    previous application whitelist approach
+
+  - Added support for dynamic log level changes via the PipeWire ``settings``
+    metadata. Also added support for log level patterns in the configuration
+    file
+
+  - The "persistent" (i.e. stored) settings approach has changed to use two
+    different metadata objects: ``sm-settings`` and ``persistent-sm-settings``.
+    Changes in the former are applied in the current session but not stored,
+    while changes in the latter are stored and restored at startup. Some work
+    was also done to expose a ``wpctl`` interface to read and change these
+    settings, but more is underway
+
+  - Several WirePlumber-specific node properties that used to be called
+    ``target.*`` have been renamed to ``node.*`` to match the PipeWire
+    convention of ``node.dont-reconnect``. These are also now fully documented
+
+Other changes:
+
+  - Many documentation updates
+
+  - Added support for SNAP container permissions
+
+  - Fixed multiple issues related to restoring the Route parameter of devices,
+    which includes volume state (#551)
+
+  - Smart filters can now be targetted by specific streams directly when
+    the ``filter.smart.targetable`` property is set (#554)
+
+  - Ported the mechanism to override device profile priorities in the
+    configuration, which is used to re-prioritize Bluetooth codecs
+
+  - WpSettings is no longer a singleton class and there is a built-in component
+    to preload an instance of it
+
+WirePlumber 0.4.81
+..................
+
+This is a preliminary release of WirePlumber 0.5.0, which is made available
+for testing purposes. Please test it and report feedback (merge requests are
+also welcome ;) ). This is not API/ABI stable yet and there is still pending
+work to do before the final 0.5.0 release, both in the codebase and the
+documentation.
+
+Highlights:
+
+  - Lua scripts have been refactored to use the new event dispatcher API, which
+    allows them to be split into multiple small fragments that react to
+    events in a specified order. This allows scripts to be more modular and
+    easier to maintain, as well as more predictable in terms of execution
+    order.
+
+  - The configuration system has been refactored to use a single SPA-JSON file,
+    like PipeWire does, with support for fragments that can override options.
+    This file is also now loaded using PipeWire's configuration API, which
+    effectively means that the file is now loaded from the PipeWire configuration
+    directories, such as ``/etc/pipewire`` and ``$XDG_CONFIG_HOME/pipewire``.
+
+  - The configuration system now has the concept of profiles, which are groups
+    of components that can be loaded together, with the ability to mark certain
+    components as optional. This allows having multiple configurations that
+    can be loaded using the same configuration file. Optional components also
+    allow loading the same profile gracefully on different setups, where some
+    components may not be available (ex, loading of the session D-Bus plugin on
+    a system-wide PipeWire setup now does not fail).
+
+  - Many configuration options are now exposed in the ``sm-settings`` metadata,
+    which allows changing them at runtime. This can be leveraged in the future
+    to implement configuration tools that can modify WirePlumber's behaviour
+    dynamically, without restarting.
+
+  - A new "filters" system has been implemented, which allows specifying chains
+    of "filter" nodes to be dynamically linked in-between streams and devices.
+    This is achieved with certain properties and metadata that can be set on
+    the filter nodes themselves.
+
+  - The default linking policy now reads some more ``target.*`` properties from
+    nodes, which allows fine-tuning some aspects of their linking behaviour,
+    such as whether they are allowed to be re-linked or whether an error should
+    be sent to the client if they cannot be linked.
+
+  - Some state files have been renamed and some have changed format to use JSON
+    for storing complex values, such as arrays. This may cause some of the old
+    state to be lost on upgrade, as there is no transition path implemented.
+
+  - The libcamera and V4L2 monitors have a "device deduplication" logic built-in,
+    which means that for each physical camera device, only one node will be
+    created, either from libcamera or V4L2, depending on which one is considered
+    better for the device. This is mainly to avoid having multiple nodes for
+    the same camera device, which can cause confusion when looking at the list
+    of available cameras in applications.
+
+WirePlumber 0.4.17
+..................
+
+Fixes:
+
+  - Fixed a reference counting issue in the object managers that could cause
+    crashes due to memory corruption (#534)
+
+  - Fixed an issue with filters linking to wrong targets, often with two sets
+    of links (#536)
+
+  - Fixed a crash in the endpoints policy that would show up when log messages
+    were enabled at level 3 or higher
+
+WirePlumber 0.4.16
+..................
+
+Additions:
+
+  - Added a new "sm-objects" script that allows loading objects on demand
+    via metadata entries that describe the object to load; this can be used to
+    load pipewire modules, such as filters or network sources/sinks, on demand
+
+  - Added a mechanism to override device profile priorities in the configuration,
+    mainly as a way to re-prioritize Bluetooth codecs, but this also can be used
+    for other devices
+
+  - Added a mechanism in the endpoints policy to allow connecting filters
+    between a certain endpoint's virtual sink and the device sink; this is
+    specifically intended to allow plugging a filter-chain to act as equalizer
+    on the Multimedia endpoint
+
+  - Added wp_core_get_own_bound_id() method in WpCore
+
+Changes:
+
+  - PipeWire 0.3.68 is now required
+
+  - policy-dsp now has the ability to hide hardware nodes behind the DSP sink
+    to prevent hardware misuse or damage
+
+  - JSON parsing in Lua now allows keys inside objects to be without quotes
+
+  - Added optional argument in the Lua JSON parse() method to limit recursions,
+    making it possible to partially parse a JSON object
+
+  - It is now possible to pass ``nil`` in Lua object constructors that expect an
+    optional properties object; previously, omitting the argument was the only
+    way to skip the properties
+
+  - The endpoints policy now marks the endpoint nodes as "passive" instead of
+    marking their links, adjusting for the behavior change in PipeWire 0.3.68
+
+  - Removed the "passive" property from si-standard-link, since only nodes are
+    marked as passive now
+
+Fixes:
+
+  - Fixed the ``wpctl clear-default`` command to completely clear all the
+    default nodes state instead of only the last set default
+
+  - Reduced the amount of globals that initially match the interest in the
+    object manager
+
+  - Used an idle callback instead of pw_core_sync() in the object manager to
+    expose tmp globals
+
+WirePlumber 0.4.15
+..................
+
+Additions:
+
+  - A new "DSP policy" module has been added; its purpose is to automatically
+    load a filter-chain when a certain hardware device is present, so that
+    audio always goes through this software DSP before reaching the device.
+    This is mainly to support Apple M1/M2 devices, which require a software
+    DSP to be always present
+
+  - WpImplModule now supports loading module arguments directly from a SPA-JSON
+    config file; this is mainly to support DSP configuration for Apple M1/M2
+    and will likely be reworked for 0.5
+
+  - Added support for automatically combining Bluetooth LE Audio device sets
+    (e.g. pairs of earbuds) (!500)
+
+  - Added command line options in ``wpctl`` to display device/node names and
+    nicknames instead of descriptions
+
+  - Added zsh completions file for ``wpctl``
+
+  - The device profile selection policy now respects the ``device.profile``
+    property if it is set on the device; this is useful to hand-pick a profile
+    based on static configuration rules (alsa_monitor.rules)
+
+Changes/Fixes:
+
+  - Linking policy now sends an error to the client before destroying the node,
+    if it determines that the node cannot be linked to any target; this fixes
+    error reporting on the client side
+
+  - Fixed a crash in suspend-node that could happen when destroying virtual
+    sinks that were loaded from another process such as pw-loopback (#467)
+
+  - Virtual machine default period size has been bumped to 1024 (#507)
+
+  - Updated bluez5 default configuration, using ``bluez5.roles`` instead of
+    ``bluez5.headset-roles`` now (!498)
+
+  - Disabled Bluetooth autoconnect by default (!514)
+
+  - Removed ``RestrictNamespaces`` option from the systemd services in order to
+    allow libcamera to load sandboxed IPA modules (#466)
+
+  - Fixed a JSON encoding bug with empty strings (#471)
+
+  - Lua code can now parse strings without quotes from SPA-JSON
+
+  - Added some missing `\since` annotations and made them show up in the
+    generated gobject-introspection file, to help bindings generators
+
 WirePlumber 0.4.14
-~~~~~~~~~~~~~~~~~~
+..................
 
 Additions:
 
@@ -23,9 +538,6 @@ Additions:
 
   - Added support for disabling libcamera nodes & devices with ``node.disabled``
     and ``device.disabled``, like it works for ALSA and V4L2 (#418)
-
-Past releases
-~~~~~~~~~~~~~
 
 WirePlumber 0.4.13
 ..................
@@ -75,9 +587,6 @@ Packaging:
     longer necessary
 
   - Added pkg-config and header information in the gir file
-
-Past releases
-~~~~~~~~~~~~~
 
 WirePlumber 0.4.12
 ..................

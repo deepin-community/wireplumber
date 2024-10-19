@@ -84,9 +84,16 @@ val = json:parse ()
 assert (val[1] == "lua")
 assert (val[2] == "spa")
 assert (val[3] == "json")
+assert (val[4] == nil)
 assert (json:get_data() == "[\"lua\", \"spa\", \"json\"]")
 assert (json:get_size() == 22)
 assert (json:get_data() == json:to_string())
+
+json = Json.Array {}
+assert (json:is_array())
+val = json:parse ()
+assert (#val == 0)
+assert (json:get_data() == "[]")
 
 json = Json.Array {
   Json.Array {
@@ -101,6 +108,9 @@ json = Json.Array {
 assert (json:is_array())
 assert (json:get_data() == "[[{\"key1\":1}, {\"key2\":2}]]")
 assert (json:get_data() == json:to_string())
+val = json:parse ()
+assert (val[1][1].key1 == 1)
+assert (val[1][2].key2 == 2)
 
 table = {}
 table[1] = 1
@@ -160,10 +170,25 @@ assert (val["2"] == 2)
 assert (val["3"] == 3)
 assert (val[4] == nil)
 
+json = Json.Object {}
+assert (json:is_object())
+val = json:parse ()
+assert (#val == 0)
+assert (val.key1 == nil)
+assert (json:get_data() == "{}")
+
 -- Raw
 json = Json.Raw ("[\"foo\", \"bar\"]")
 assert (json:is_array())
 assert (json:get_data() == "[\"foo\", \"bar\"]")
+assert (json:get_data() == json:to_string())
+val = json:parse ()
+assert (val[1] == "foo")
+assert (val[2] == "bar")
+
+json = Json.Raw ("[foo, bar]")
+assert (json:is_array())
+assert (json:get_data() == "[foo, bar]")
 assert (json:get_data() == json:to_string())
 val = json:parse ()
 assert (val[1] == "foo")
@@ -178,3 +203,70 @@ assert (val.name == "wireplumber")
 assert (val.version[1] == 0)
 assert (val.version[2] == 4)
 assert (val.version[3] == 7)
+
+-- recursion limit
+json = Json.Raw ("{ name = wireplumber, version = [0, 4, 15], args = { test = [0, 1] } }")
+
+val = json:parse (0)
+assert (type (val) == "string")
+assert (val == "{ name = wireplumber, version = [0, 4, 15], args = { test = [0, 1] } }")
+
+val = json:parse (1)
+assert (type (val) == "table")
+assert (val.name == "wireplumber")
+assert (type (val.version) == "string")
+assert (val.version == "[0, 4, 15]")
+assert (type (val.args) == "string")
+assert (val.args == "{ test = [0, 1] }")
+
+val = json:parse(2)
+assert (type (val) == "table")
+assert (val.name == "wireplumber")
+assert (type (val.version) == "table")
+assert (val.version[1] == 0)
+assert (val.version[2] == 4)
+assert (val.version[3] == 15)
+assert (type (val.args) == "table")
+assert (val.args.test == "[0, 1]")
+
+val = json:parse(3)
+assert (type (val) == "table")
+assert (val.name == "wireplumber")
+assert (type (val.version) == "table")
+assert (val.version[1] == 0)
+assert (val.version[2] == 4)
+assert (val.version[3] == 15)
+assert (type (val.args) == "table")
+assert (type (val.args.test) == "table")
+assert (val.args.test[1] == 0)
+assert (val.args.test[2] == 1)
+
+-- merge
+json = Json.Array { "foo" }
+json2 = Json.Array { "bar" }
+json = json:merge(json2)
+assert (json:is_array())
+val = json:parse ()
+assert (val[1] == "foo")
+assert (val[2] == "bar")
+
+table = {}
+table["1"] = 1
+table["2"] = 2
+json = Json.Object (table)
+table = {}
+table["3"] = 3
+table["4"] = 4
+json2 = Json.Object (table)
+json = json:merge(json2)
+val = json:parse ()
+assert (val["1"] == 1)
+assert (val["2"] == 2)
+assert (val["3"] == 3)
+assert (val["4"] == 4)
+
+json = Json.Object { ["a"] = "foo" }
+json2 = Json.Object { ["a"] = "bar" }
+json = json:merge(json2)
+val = json:parse ()
+assert (val["a"] == "bar")

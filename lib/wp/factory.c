@@ -6,12 +6,11 @@
  * SPDX-License-Identifier: MIT
  */
 
-#define G_LOG_DOMAIN "wp-factory"
-
 #include "factory.h"
+#include "log.h"
 #include "private/pipewire-object-mixin.h"
 
-#include "log.h"
+WP_DEFINE_LOCAL_LOG_TOPIC ("wp-factory")
 
 /*! \defgroup wpfactory WpFactory */
 /*!
@@ -24,6 +23,8 @@
  * constructed factory objects are reported in by PipeWire registry 
  * and it is made available for wireplumber clients through the 
  * WpObjectManager API.
+ *
+ * \since 0.4.5
  */
 
 struct _WpFactory

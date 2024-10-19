@@ -1,13 +1,5 @@
-# disabled temporarily
-if false
-executable('audiotestsrc-play',
-  'audiotestsrc-play.c',
-  c_args : [
-    '-D_GNU_SOURCE',
-    '-DG_LOG_USE_STRUCTURED',
-    '-DG_LOG_DOMAIN="audiotestsrc-play"',
-  ],
+executable('node-extra-params',
+  'node-extra-params.c',
   install: false,
-  dependencies : [giounix_dep, wp_dep, pipewire_dep],
+  dependencies : [wp_dep],
 )
-endif

@@ -130,7 +130,7 @@ class DoxygenProcess(object):
     def __process_element(self, xml):
         s = ""
 
-        if xml.text and re.search('\S', xml.text):
+        if xml.text and re.search(r'\S', xml.text):
             s += xml.text
         for n in xml.getchildren():
             if n.tag == "emphasis":
@@ -143,7 +143,7 @@ class DoxygenProcess(object):
                 s += " - " + self.__process_element(n)
             if n.tag == "para":
                 p = self.__process_element(n)
-                if re.search('\S', p):
+                if re.search(r'\S', p):
                     s += p + "\n"
             if n.tag == "ref":
                 s += n.text if n.text else ""
@@ -168,7 +168,7 @@ class DoxygenProcess(object):
             if n.tag == "htmlonly":
                 s += ""
             if n.tail:
-                if re.search('\S', n.tail):
+                if re.search(r'\S', n.tail):
                   s += n.tail
             if n.tag.startswith("param"):
                 pass  # parameters are handled separately in DoxyFunction::from_memberdef()
@@ -195,9 +195,9 @@ class DoxyElement(object):
         self.retval     = kwargs.get('retval', None)
 
     def is_documented(self):
-        if (normalize_text(self.brief)) != "":
-            return True
-        return False
+        return (normalize_text(self.brief) != "" or
+                normalize_text(self.detail) != "" or
+                normalize_text(self.since) != "")
 
     def add_brief(self, xml):
         proc = DoxygenProcess()
@@ -271,6 +271,7 @@ class DoxyEnum(DoxyElement):
 
         e = DoxyEnum(name, d)
         e.add_brief(xml.find("briefdescription"))
+        e.add_detail(xml.find("detaileddescription"))
         for p in xml.findall("enumvalue"):
             e.add_member(p)
         return e
@@ -302,6 +303,7 @@ class DoxyStruct(DoxyElement):
         d += "};\n"
         e = DoxyStruct(name, d)
         e.add_brief(xml.find("briefdescription"))
+        e.add_detail(xml.find("detaileddescription"))
         for p in memberdefs:
             e.add_member(p)
         return e
@@ -317,6 +319,8 @@ class DoxyFunction(DoxyElement):
             d = normalize_text(d)
 
         e = DoxyFunction(name, d)
+        if (xml.get("prot") == "private"):
+            e.extra = "(skip)"
         e.add_brief(xml.find("briefdescription"))
         e.add_detail(xml.find("detaileddescription"))
         for p in xml.xpath(".//detaileddescription/*/parameterlist[@kind='param']/parameteritem"):
