@@ -24,9 +24,11 @@ struct _WpSiAudioAdapter
   WpSessionItem parent;
 
   /* configuration */
+  gboolean reconfigured;
   WpNode *node;
   WpPort *port;  /* only used for passthrough or convert mode */
   gboolean no_format;
+  gboolean mono;
   gboolean control_port;
   gboolean monitor;
   gboolean disable_dsp;
@@ -104,6 +106,7 @@ si_audio_adapter_reset (WpSessionItem * item)
   g_clear_object (&self->node);
   g_clear_object (&self->port);
   self->no_format = FALSE;
+  self->mono = FALSE;
   self->control_port = FALSE;
   self->monitor = FALSE;
   self->disable_dsp = FALSE;
@@ -134,10 +137,11 @@ si_audio_adapter_get_default_clock_rate (WpSiAudioAdapter * self)
 static gboolean
 is_unpositioned (struct spa_audio_info_raw *info)
 {
-  uint32_t i;
+  uint32_t i, n_pos;
   if (SPA_FLAG_IS_SET(info->flags, SPA_AUDIO_FLAG_UNPOSITIONED))
     return TRUE;
-  for (i = 0; i < info->channels; i++)
+  n_pos = SPA_MIN(info->channels, SPA_N_ELEMENTS(info->position));
+  for (i = 0; i < n_pos; i++)
     if (info->position[i] >= SPA_AUDIO_CHANNEL_START_Aux &&
         info->position[i] <= SPA_AUDIO_CHANNEL_LAST_Aux)
       return TRUE;
@@ -145,7 +149,8 @@ is_unpositioned (struct spa_audio_info_raw *info)
 }
 
 static gboolean
-si_audio_adapter_find_format (WpSiAudioAdapter * self, WpNode * node)
+si_audio_adapter_find_format (WpSiAudioAdapter * self, WpNode * node,
+    gboolean mono)
 {
   g_autoptr (WpIterator) formats = NULL;
   g_auto (GValue) value = G_VALUE_INIT;
@@ -193,8 +198,13 @@ si_audio_adapter_find_format (WpSiAudioAdapter * self, WpNode * node)
         continue;
 
       if (position == NULL ||
-          !spa_pod_copy_array(position, SPA_TYPE_Id, raw_format.position, SPA_AUDIO_MAX_CHANNELS))
+          !spa_pod_copy_array(position, SPA_TYPE_Id, raw_format.position, SPA_N_ELEMENTS(raw_format.position)))
         SPA_FLAG_SET(raw_format.flags, SPA_AUDIO_FLAG_UNPOSITIONED);
+
+      if (mono) {
+        raw_format.channels = 1;
+        raw_format.position [0] = SPA_AUDIO_CHANNEL_MONO;
+      }
 
       if (self->raw_format.channels < raw_format.channels) {
         self->raw_format = raw_format;
@@ -247,6 +257,8 @@ si_audio_adapter_configure (WpSessionItem * item, WpProperties *p)
   WpNode *node = NULL;
   const gchar *str;
 
+  self->reconfigured = self->node != NULL;
+
   /* reset previous config */
   si_audio_adapter_reset (item);
 
@@ -264,7 +276,12 @@ si_audio_adapter_configure (WpSessionItem * item, WpProperties *p)
 
   str = wp_properties_get (si_props, "item.features.no-format");
   self->no_format = str && pw_properties_parse_bool (str);
-  if (!self->no_format && !si_audio_adapter_find_format (self, node)) {
+
+  str = wp_properties_get (si_props, "item.features.mono");
+  self->mono = str && pw_properties_parse_bool (str);
+
+  if (!self->no_format && !si_audio_adapter_find_format (self, node,
+      self->mono)) {
     wp_notice_object (item, "no usable format found for node %d",
         wp_proxy_get_bound_id (WP_PROXY (node)));
     return FALSE;
@@ -333,7 +350,8 @@ format_audio_raw_build (const struct spa_audio_info_raw *info)
    if (!SPA_FLAG_IS_SET (info->flags, SPA_AUDIO_FLAG_UNPOSITIONED)) {
      /* Build the position array spa pod */
      g_autoptr (WpSpaPodBuilder) position_builder = wp_spa_pod_builder_new_array ();
-     for (guint i = 0; i < info->channels; i++)
+     guint n_pos = SPA_MIN(info->channels, SPA_N_ELEMENTS(info->position));
+     for (guint i = 0; i < n_pos; i++)
        wp_spa_pod_builder_add_id (position_builder, info->position[i]);
 
      /* Add the position property */
@@ -476,22 +494,42 @@ static void
 si_audio_adapter_configure_node (WpSiAudioAdapter *self,
     WpTransition * transition)
 {
-  g_autoptr (WpSpaPod) format = NULL;
+  g_autoptr (WpSpaPod) current_format = NULL;
+  g_autoptr (WpSpaPod) new_format = NULL;
   g_autoptr (WpSpaPod) ports_format = NULL;
   const gchar *mode = NULL;
 
   /* set the chosen format on the node */
-  format = format_audio_raw_build (&self->raw_format);
-  wp_pipewire_object_set_param (WP_PIPEWIRE_OBJECT (self->node), "Format", 0,
-      wp_spa_pod_ref (format));
+  current_format = wp_si_adapter_get_ports_format (WP_SI_ADAPTER (self), NULL);
+  new_format = format_audio_raw_build (&self->raw_format);
+  if (current_format == NULL || !wp_spa_pod_equal (current_format, new_format)) {
+    if (current_format == NULL) {
+      wp_debug_object (self, "setting Format param since it is not set yet");
+    } else {
+      wp_debug_object (self, "setting Format param since the new format differs "
+          "from the current one");
+    }
+    /* ensure the node is suspended, since setting the Format param only
+     * works if the node is not running */
+    if (wp_node_get_state (self->node, NULL) >= WP_NODE_STATE_IDLE) {
+      wp_debug_object (self, "suspending node before setting its Format param");
+      wp_node_send_command (self->node, "Suspend");
+    }
+
+    wp_pipewire_object_set_param (WP_PIPEWIRE_OBJECT (self->node), "Format", 0,
+        wp_spa_pod_ref (new_format));
+  } else {
+    wp_debug_object (self, "not setting Format param since the new format is "
+        "the same as the current one");
+  }
 
   /* build the ports format */
   if (self->disable_dsp) {
     mode = "passthrough";
-    ports_format = g_steal_pointer (&format);
+    ports_format = g_steal_pointer (&new_format);
   } else {
     mode = "dsp";
-    ports_format = build_adapter_dsp_format (self, format);
+    ports_format = build_adapter_dsp_format (self, new_format);
     if (!ports_format) {
         wp_transition_return_error (transition,
           g_error_new (WP_DOMAIN_LIBRARY, WP_LIBRARY_ERROR_OPERATION_FAILED,
@@ -591,8 +629,10 @@ si_audio_adapter_enable_active (WpSessionItem *si, WpTransition *transition)
 
   /* If device node, enum available formats and set one of them */
   if (!self->no_format && (self->is_device || self->dont_remix ||
-      !self->is_autoconnect || self->disable_dsp || self->is_unpositioned))
+      !self->is_autoconnect || self->disable_dsp || self->is_unpositioned ||
+      self->reconfigured)) {
     si_audio_adapter_configure_node (self, transition);
+  }
 
   /* Otherwise just finish activating */
   else
@@ -695,13 +735,18 @@ si_audio_adapter_set_ports_format (WpSiAdapter * item, WpSpaPod *f,
   if (!g_strcmp0 (mode, self->mode) &&
       ((format == NULL && self->format == NULL) ||
         wp_spa_pod_equal (format, self->format))) {
+    wp_debug_object (self, "new PortConfig mode and format are identical "
+        "to the current ones; skipping reconfiguration");
     g_task_return_boolean (task, TRUE);
     return;
   }
 
-  /* ensure the node is suspended */
-  if (wp_node_get_state (self->node, NULL) >= WP_NODE_STATE_IDLE)
+  /* ensure the node is suspended, since setting the PortConfig param
+   * only works if the node is not running */
+  if (wp_node_get_state (self->node, NULL) >= WP_NODE_STATE_IDLE) {
+    wp_debug_object (self, "suspending node before setting its PortConfig param");
     wp_node_send_command (self->node, "Suspend");
+  }
 
   /* set task, format and mode */
   self->format_task = g_steal_pointer (&task);

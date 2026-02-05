@@ -18,7 +18,7 @@ by the vendor's proprietary userspace.
 WirePlumber's automatic software DSP mechanism aims to replicate this functionality in
 a standardised and configurable way. The target device sink/source is hidden from
 other PipeWire clients, and a virtual node is linked to it. This virtual
-node is then presented to clients as *the* node, allowing implementors to specify
+node is then presented to clients as *the* node, allowing implementers to specify
 any custom processing or routing in a way that is transparent to users, the kernel,
 and the hardware.
 
@@ -95,12 +95,12 @@ Examples
      }
    ]
 
-   wireplumber.profiles = [
+   wireplumber.profiles = {
      main = {
        node.software-dsp = required
      }
-   ]
+   }
 
 
-This will match any sinks with the UCM HiFi Speaker profile set that are associated
-with cards containing the string "WeirdHardware" at the start of their name.
+This will match any sinks with the UCM HiFi Speaker profile set or cards
+containing the string "WeirdHardware" at the start of their name.

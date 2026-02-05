@@ -1,5 +1,5 @@
 project('wireplumber', ['c'],
-  version : '0.5.6',
+  version : '0.5.13',
   license : 'MIT',
   meson_version : '>= 0.59.0',
   default_options : [
@@ -41,6 +41,17 @@ add_project_arguments([
     '-DGETTEXT_PACKAGE="@0@"'.format(meson.project_name()),
   ], language: 'c'
 )
+
+check_short_name = '''#define _GNU_SOURCE
+#include <errno.h>
+void main() { program_invocation_short_name; }
+'''
+if cc.compiles(check_short_name, name : 'check short_name')
+  add_project_arguments([
+      '-DHAS_SHORT_NAME',
+    ], language: 'c'
+  )
+endif
 
 build_modules = get_option('modules')
 build_daemon = get_option('daemon')
@@ -147,7 +158,27 @@ common_args = [
   '-DG_LOG_USE_STRUCTURED',
   '-DWP_USE_LOCAL_LOG_TOPIC_IN_G_LOG',
 ]
+
+# Check if SPA_AUDIO_MAX_CHANNELS can be overridden
+# (newer headers have #ifndef guards, older ones don't)
+check_spa_max_channels_override = '''
+#define SPA_AUDIO_MAX_CHANNELS 128u
+#include <spa/param/audio/raw.h>
+void main() { int x = SPA_AUDIO_MAX_CHANNELS; }
+'''
+spa_max_channels = 64
+if cc.compiles(check_spa_max_channels_override,
+               dependencies: spa_dep,
+               args: ['-Werror'],
+               name: 'SPA_AUDIO_MAX_CHANNELS override')
+  common_args += ['-DSPA_AUDIO_MAX_CHANNELS=128u']
+  spa_max_channels = 128
+endif
+
 add_project_arguments(common_args, language: 'c')
+summary({'SPA_AUDIO_MAX_CHANNELS': spa_max_channels})
+
+i18n_conf = files()
 
 subdir('lib')
 if build_modules

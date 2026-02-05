@@ -26,7 +26,7 @@ function checkFilter (si, om, handle_nonstreams)
 
   -- always return true if this is not a filter
   local node = si:get_associated_proxy ("node")
-  local link_group = node.properties["node.link-group"]
+  local link_group = node:get_property ("node.link-group")
   if link_group == nil then
     return true
   end
@@ -43,36 +43,34 @@ function checkFilter (si, om, handle_nonstreams)
 end
 
 function checkLinkable (si, om, handle_nonstreams)
-  local si_props = si.properties
-
   -- For the rest of them, only handle stream session items
-  if not si_props or (si_props ["item.node.type"] ~= "stream"
-      and not handle_nonstreams) then
-    return false, si_props
+  if si:get_property ("item.node.type") ~= "stream" and
+      not handle_nonstreams then
+    return false
   end
 
   -- check filters
   if not checkFilter (si, om, handle_nonstreams) then
-    return false, si_props
+    return false
   end
 
-  return true, si_props
+  return true
 end
 
 function unhandleLinkable (si, om)
-  local si_id = si.id
-  local valid, si_props = checkLinkable (si, om, true)
-  if not valid then
+  if not checkLinkable (si, om, true) then
     return
   end
 
+  local si_id = si.id
   log:info (si, string.format ("unhandling item %d", si_id))
 
   -- iterate over all the links in the graph and
   -- remove any links associated with this item
   for silink in om:iterate { type = "SiLink" } do
-    local out_id = tonumber (silink.properties ["out.item.id"])
-    local in_id = tonumber (silink.properties ["in.item.id"])
+    local silink_props = silink.properties
+    local out_id = silink_props:get_int ("out.item.id")
+    local in_id = silink_props:get_int ("in.item.id")
 
     if out_id == si_id or in_id == si_id then
       local in_flags = lutils:get_flags (in_id)
@@ -84,7 +82,7 @@ function unhandleLinkable (si, om)
         out_flags.peer_id = nil
       end
 
-      if cutils.parseBool (silink.properties["is.role.policy.link"]) then
+      if silink_props:get_boolean ("is.role.policy.link") then
         lutils.clearPriorityMediaRoleLink(silink)
       end
 
@@ -113,17 +111,67 @@ SimpleEventHook {
   end
 }:register ()
 
+-- Handle newly added linkable immediately without waiting for full rescan
+-- Only for simple cases where we know it won't affect other parts of the graph
+SimpleEventHook {
+  name = "linking/linkable-added-immediate",
+  before = "linking/rescan-trigger",
+  interests = {
+    EventInterest {
+      Constraint { "event.type", "=", "session-item-added" },
+      Constraint { "event.session-item.interface", "=", "linkable" },
+    },
+  },
+  execute = function (event)
+    local si = event:get_subject ()
+    local source = event:get_source ()
+    local om = source:call ("get-object-manager", "session-item")
+
+    if not checkLinkable (si, om, false) then
+      return
+    end
+
+    -- Don't handle immediately if this is a smart filter that could affect other nodes
+    local node = si:get_associated_proxy ("node")
+    local link_group = node:get_property ("node.link-group")
+    if link_group then
+      local direction = cutils.getTargetDirection (si.properties)
+      if futils.is_filter_smart (direction, link_group) then
+        -- Smart filters need full rescan to handle cascading effects
+        return
+      end
+    end
+
+    -- Only handle if autoconnect is enabled
+    local autoconnect = si:get_property ("node.autoconnect")
+    if autoconnect ~= "true" then
+      return
+    end
+
+    -- Check if this is a simple stream (most common case)
+    -- Don't handle device nodes or special nodes that might become default targets
+    if si:get_property ("item.node.type") ~= "stream" then
+      return
+    end
+
+    -- Push select-target event immediately for simple stream case
+    source:call ("push-event", "select-target", si, nil)
+  end
+}:register ()
+
 function handleLinkables (source)
   local om = source:call ("get-object-manager", "session-item")
 
   for si in om:iterate { type = "SiLinkable" } do
-    local valid, si_props = checkLinkable (si, om)
-    if not valid then
+    if not checkLinkable (si, om) then
       goto skip_linkable
     end
 
+    -- Get properties
+    local si_props = si.properties
+
     -- check if we need to link this node at all
-    local autoconnect = cutils.parseBool (si_props ["node.autoconnect"])
+    local autoconnect = si_props:get_boolean ("node.autoconnect")
     if not autoconnect then
       log:debug (si, tostring (si_props ["node.name"]) .. " does not need to be autoconnected")
       goto skip_linkable
@@ -155,7 +203,7 @@ SimpleEventHook {
         Constraint { "node.link-group", "+" },
     } do
       local node = si:get_associated_proxy ("node")
-      local link_group = node.properties["node.link-group"]
+      local link_group = node:get_property ("node.link-group")
       local direction = cutils.getTargetDirection (si.properties)
       if futils.is_filter_smart (direction, link_group) and
           futils.is_filter_disabled (direction, link_group) then
@@ -235,7 +283,6 @@ SimpleEventHook {
   },
   execute = function (event)
     local si = event:get_subject ()
-    local si_props = si.properties
     local source = event:get_source ()
 
     -- clear timeout source, if any

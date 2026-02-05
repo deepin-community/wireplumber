@@ -9,6 +9,7 @@
 #include <wp/wp.h>
 #include <stdio.h>
 #include <locale.h>
+#include <libintl.h>
 #include <spa/utils/defs.h>
 #include <spa/utils/string.h>
 #include <pipewire/pipewire.h>
@@ -529,7 +530,7 @@ status_run (WpCtl * self)
   printf (TREE_INDENT_END "Default Configured Devices:\n");
   if (def_nodes_api) {
     for (guint i = 0; i < G_N_ELEMENTS (DEFAULT_NODE_MEDIA_CLASSES); i++) {
-      const gchar *name = NULL;
+      g_autofree gchar *name = NULL;
       g_signal_emit_by_name (def_nodes_api, "get-default-configured-node-name",
           DEFAULT_NODE_MEDIA_CLASSES[i], &name);
       if (name)
@@ -753,7 +754,7 @@ inspect_print_object (WpCtl * self, WpProxy * proxy, guint nest_level)
     if (cmdline.inspect.show_referenced && nest_level == 0 &&
         key_is_object_reference (prop_item->key))
     {
-      guint id = (guint) strtol (prop_item->value, NULL, 10);
+      guint32 id = (guint32) strtol (prop_item->value, NULL, 10);
       g_autoptr (WpProxy) refer_proxy =
           wp_object_manager_lookup (self->om, WP_TYPE_GLOBAL_PROXY,
               WP_CONSTRAINT_TYPE_G_PROPERTY, "bound-id", "=u", id, NULL);
@@ -833,10 +834,8 @@ set_default_prepare (WpCtl * self, GError ** error)
 {
   wp_object_manager_add_interest (self->om, WP_TYPE_NODE,
       WP_CONSTRAINT_TYPE_PW_GLOBAL_PROPERTY,
-      "object.id", "=u", cmdline.set_default.id,
+      "object.id", "=u", (guint32) cmdline.set_default.id,
       NULL);
-  wp_object_manager_request_object_features (self->om, WP_TYPE_METADATA,
-      WP_OBJECT_FEATURES_ALL);
   wp_object_manager_request_object_features (self->om, WP_TYPE_NODE,
       WP_PIPEWIRE_OBJECT_FEATURES_MINIMAL);
   return TRUE;
@@ -1205,6 +1204,7 @@ set_profile_run (WpCtl * self)
       wp_spa_pod_new_object (
         "Spa:Pod:Object:Param:Profile", "Profile",
         "index", "i", cmdline.set_profile.index,
+        "save", "b", TRUE,
         NULL));
   wp_core_sync (self->core, NULL, (GAsyncReadyCallback) async_quit, self);
   return;
@@ -1432,6 +1432,7 @@ print_setting (WpSettings *s, const gchar *key)
   g_autoptr (WpSpaJson) value = NULL;
   g_autoptr (WpSpaJson) saved = NULL;
   g_autoptr (WpSettingsSpec) spec = NULL;
+  const gchar *name;
   const gchar *desc;
   WpSettingsSpecType val_type;
   g_autoptr (WpSpaJson) def = NULL;
@@ -1441,6 +1442,7 @@ print_setting (WpSettings *s, const gchar *key)
   value = wp_settings_get (s, key);
   saved = wp_settings_get_saved (s, key);
   spec = wp_settings_get_spec (s, key);
+  name = wp_settings_spec_get_name (spec);
   desc = wp_settings_spec_get_description (spec);
   val_type = wp_settings_spec_get_value_type (spec);
   def = wp_settings_spec_get_default_value (spec);
@@ -1448,10 +1450,12 @@ print_setting (WpSettings *s, const gchar *key)
   max = wp_settings_spec_get_max_value (spec);
 
   /* print key */
-  printf ("- Name: %s\n", key);
+  printf ("- Id: %s\n", key);
 
   /* print spec */
-  printf ("  Desc: %s\n", desc);
+  if (name)
+    printf ("  Name: %s\n", dgettext (GETTEXT_PACKAGE, name));
+  printf ("  Desc: %s\n", dgettext (GETTEXT_PACKAGE, desc));
   printf ("  Type: %s\n", settings_spec_type_to_string (val_type));
   printf ("  Default: %s", wp_spa_json_get_data (def));
   if (min && max)

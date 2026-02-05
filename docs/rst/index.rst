@@ -42,6 +42,13 @@ Table of Contents
 
    scripting/lua_api.rst
    scripting/existing_scripts.rst
+   scripting/custom_scripts.rst
+
+.. toctree::
+   :maxdepth: 2
+   :caption: Tools
+
+   tools/wpctl.rst
 
 .. toctree::
    :maxdepth: 2

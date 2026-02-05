@@ -15,6 +15,161 @@
 
 WP_DEFINE_LOCAL_LOG_TOPIC ("wp-event-dispatcher")
 
+typedef struct _HookData HookData;
+struct _HookData
+{
+  struct spa_list link;
+  WpEventHook *hook;
+  GPtrArray *dependencies;
+};
+
+static inline HookData *
+hook_data_new (WpEventHook * hook)
+{
+  HookData *hook_data = g_new0 (HookData, 1);
+  spa_list_init (&hook_data->link);
+  hook_data->hook = g_object_ref (hook);
+  hook_data->dependencies = g_ptr_array_new ();
+  return hook_data;
+}
+
+static void
+hook_data_free (HookData *self)
+{
+  g_clear_object (&self->hook);
+  g_clear_pointer (&self->dependencies, g_ptr_array_unref);
+  g_free (self);
+}
+
+static inline void
+record_dependency (struct spa_list *list, const gchar *target,
+    const gchar *dependency)
+{
+  HookData *hook_data;
+  spa_list_for_each (hook_data, list, link) {
+    if (g_pattern_match_simple (target, wp_event_hook_get_name (hook_data->hook))) {
+      g_ptr_array_insert (hook_data->dependencies, -1, (gchar *) dependency);
+      break;
+    }
+  }
+}
+
+static inline gboolean
+hook_exists_in (const gchar *hook_name, struct spa_list *list)
+{
+  HookData *hook_data;
+  if (!spa_list_is_empty (list)) {
+    spa_list_for_each (hook_data, list, link) {
+      if (g_pattern_match_simple (hook_name, wp_event_hook_get_name (hook_data->hook))) {
+        return TRUE;
+      }
+    }
+  }
+  return FALSE;
+}
+
+static gboolean
+sort_hooks (GPtrArray *hooks)
+{
+  struct spa_list collected, result, remaining;
+  HookData *sorted_hook_data = NULL;
+
+  spa_list_init (&collected);
+  spa_list_init (&result);
+  spa_list_init (&remaining);
+
+  for (guint i = 0; i < hooks->len; i++) {
+    WpEventHook *hook = g_ptr_array_index (hooks, i);
+    HookData *hook_data = hook_data_new (hook);
+
+    /* record "after" dependencies directly */
+    const gchar * const * strv =
+        wp_event_hook_get_runs_after_hooks (hook_data->hook);
+    while (strv && *strv) {
+      g_ptr_array_insert (hook_data->dependencies, -1, (gchar *) *strv);
+      strv++;
+    }
+
+    spa_list_append (&collected, &hook_data->link);
+  }
+
+  if (!spa_list_is_empty (&collected)) {
+    HookData *hook_data;
+
+    /* convert "before" dependencies into "after" dependencies */
+    spa_list_for_each (hook_data, &collected, link) {
+      const gchar * const * strv =
+          wp_event_hook_get_runs_before_hooks (hook_data->hook);
+      while (strv && *strv) {
+        /* record hook_data->hook as a dependency of the *strv hook */
+        record_dependency (&collected, *strv,
+            wp_event_hook_get_name (hook_data->hook));
+        strv++;
+      }
+    }
+
+    /* sort */
+    while (!spa_list_is_empty (&collected)) {
+      gboolean made_progress = FALSE;
+
+      /* examine each hook to see if its dependencies are satisfied in the
+         result list; if yes, then append it to the result too */
+      spa_list_consume (hook_data, &collected, link) {
+        guint deps_satisfied = 0;
+
+        spa_list_remove (&hook_data->link);
+
+        for (guint i = 0; i < hook_data->dependencies->len; i++) {
+          const gchar *dep = g_ptr_array_index (hook_data->dependencies, i);
+          /* if the dependency is already in the sorted result list or if
+             it doesn't exist at all, we consider it satisfied */
+          if (hook_exists_in (dep, &result) ||
+              !(hook_exists_in (dep, &collected) ||
+                hook_exists_in (dep, &remaining))) {
+            deps_satisfied++;
+          }
+        }
+
+        if (deps_satisfied == hook_data->dependencies->len) {
+          spa_list_append (&result, &hook_data->link);
+          made_progress = TRUE;
+        } else {
+          spa_list_append (&remaining, &hook_data->link);
+        }
+      }
+
+      if (made_progress) {
+        /* run again with the remaining hooks */
+        spa_list_insert_list (&collected, &remaining);
+        spa_list_init (&remaining);
+      }
+      else if (!spa_list_is_empty (&remaining)) {
+        /* if we did not make any progress towards growing the result list,
+           it means the dependencies cannot be satisfied because of circles */
+        spa_list_consume (hook_data, &result, link) {
+          spa_list_remove (&hook_data->link);
+          hook_data_free (hook_data);
+        }
+        spa_list_consume (hook_data, &remaining, link) {
+          spa_list_remove (&hook_data->link);
+          hook_data_free (hook_data);
+        }
+        return FALSE;
+      }
+    }
+  }
+
+  /* clear hooks and add the sorted ones */
+  g_ptr_array_set_size (hooks, 0);
+  spa_list_consume (sorted_hook_data, &result, link) {
+    spa_list_remove (&sorted_hook_data->link);
+    g_ptr_array_add (hooks, g_object_ref (sorted_hook_data->hook));
+    hook_data_free (sorted_hook_data);
+  }
+
+  return TRUE;
+}
+
 typedef struct _EventData EventData;
 struct _EventData
 {
@@ -49,7 +204,8 @@ struct _WpEventDispatcher
   GObject parent;
 
   GWeakRef core;
-  GPtrArray *hooks; /* registered hooks */
+  GHashTable *defined_hooks;  /* registered hooks for defined events */
+  GPtrArray *undefined_hooks;  /* registered hooks for undefined events */
   GSource *source;  /* the event loop source */
   GList *events;    /* the events stack */
   struct spa_system *system;
@@ -160,7 +316,9 @@ static void
 wp_event_dispatcher_init (WpEventDispatcher * self)
 {
   g_weak_ref_init (&self->core, NULL);
-  self->hooks = g_ptr_array_new_with_free_func (g_object_unref);
+  self->defined_hooks = g_hash_table_new_full (g_str_hash, g_str_equal, g_free,
+      (GDestroyNotify)g_ptr_array_unref);
+  self->undefined_hooks = g_ptr_array_new_with_free_func (g_object_unref);
 
   self->source = g_source_new (&source_funcs, sizeof (WpEventSource));
   ((WpEventSource *) self->source)->dispatcher = self;
@@ -184,7 +342,8 @@ wp_event_dispatcher_finalize (GObject * object)
 
   close (self->eventfd);
 
-  g_clear_pointer (&self->hooks, g_ptr_array_unref);
+  g_clear_pointer (&self->defined_hooks, g_hash_table_unref);
+  g_clear_pointer (&self->undefined_hooks, g_ptr_array_unref);
   g_weak_ref_clear (&self->core);
 
   G_OBJECT_CLASS (wp_event_dispatcher_parent_class)->finalize (object);
@@ -284,6 +443,10 @@ void
 wp_event_dispatcher_register_hook (WpEventDispatcher * self,
     WpEventHook * hook)
 {
+  g_autoptr (GPtrArray) event_types = NULL;
+  gboolean is_defined = FALSE;
+  const gchar *hook_name;
+
   g_return_if_fail (WP_IS_EVENT_DISPATCHER (self));
   g_return_if_fail (WP_IS_EVENT_HOOK (hook));
 
@@ -292,7 +455,74 @@ wp_event_dispatcher_register_hook (WpEventDispatcher * self,
   g_return_if_fail (already_registered_dispatcher == NULL);
 
   wp_event_hook_set_dispatcher (hook, self);
-  g_ptr_array_add (self->hooks, g_object_ref (hook));
+
+  /* Register the event hook in the defined hooks table if it is defined */
+  hook_name = wp_event_hook_get_name (hook);
+  event_types = wp_event_hook_get_matching_event_types (hook);
+  if (event_types) {
+    for (guint i = 0; i < event_types->len; i++) {
+      const gchar *event_type = g_ptr_array_index (event_types, i);
+      GPtrArray *hooks;
+
+      wp_debug_object (self, "Registering hook %s for defined event type %s",
+          hook_name, event_type);
+
+      /* Check if the event type was registered in the hash table */
+      hooks = g_hash_table_lookup (self->defined_hooks, event_type);
+      if (hooks) {
+        g_ptr_array_add (hooks, g_object_ref (hook));
+        if (!sort_hooks (hooks))
+          goto sort_error;
+      } else {
+        GPtrArray *new_hooks = g_ptr_array_new_with_free_func (g_object_unref);
+        /* Add undefined hooks */
+        for (guint i = 0; i < self->undefined_hooks->len; i++) {
+          WpEventHook *uh = g_ptr_array_index (self->undefined_hooks, i);
+          g_ptr_array_add (new_hooks, g_object_ref (uh));
+        }
+        /* Add current hook */
+        g_ptr_array_add (new_hooks, g_object_ref (hook));
+        g_hash_table_insert (self->defined_hooks, g_strdup (event_type),
+            new_hooks);
+        if (!sort_hooks (new_hooks))
+          goto sort_error;
+      }
+
+      is_defined = TRUE;
+    }
+  }
+
+  /* Otherwise just register it as undefined hook */
+  if (!is_defined) {
+    GHashTableIter iter;
+    gpointer value;
+
+    wp_debug_object (self, "Registering hook %s for undefined event types",
+          hook_name);
+
+    /* Add it to the defined hooks table */
+    g_hash_table_iter_init (&iter, self->defined_hooks);
+    while (g_hash_table_iter_next (&iter, NULL, &value)) {
+      GPtrArray *defined_hooks = value;
+      g_ptr_array_add (defined_hooks, g_object_ref (hook));
+      if (!sort_hooks (defined_hooks))
+        goto sort_error;
+    }
+
+    /* Add it to the undefined hooks */
+    g_ptr_array_add (self->undefined_hooks, g_object_ref (hook));
+    if (!sort_hooks (self->undefined_hooks))
+      goto sort_error;
+  }
+
+  wp_info_object (self, "Registered hook %s successfully", hook_name);
+  return;
+
+sort_error:
+  /* Unregister hook */
+  wp_event_dispatcher_unregister_hook (self, hook);
+  wp_warning_object (self,
+      "Could not register hook %s because of circular dependencies", hook_name);
 }
 
 /*!
@@ -306,6 +536,9 @@ void
 wp_event_dispatcher_unregister_hook (WpEventDispatcher * self,
     WpEventHook * hook)
 {
+  GHashTableIter iter;
+  gpointer value;
+
   g_return_if_fail (WP_IS_EVENT_DISPATCHER (self));
   g_return_if_fail (WP_IS_EVENT_HOOK (hook));
 
@@ -314,11 +547,29 @@ wp_event_dispatcher_unregister_hook (WpEventDispatcher * self,
   g_return_if_fail (already_registered_dispatcher == self);
 
   wp_event_hook_set_dispatcher (hook, NULL);
-  g_ptr_array_remove_fast (self->hooks, hook);
+
+  /* Remove hook from defined table and undefined list */
+  g_hash_table_iter_init (&iter, self->defined_hooks);
+  while (g_hash_table_iter_next (&iter, NULL, &value)) {
+    GPtrArray *defined_hooks = value;
+    g_ptr_array_remove (defined_hooks, hook);
+  }
+  g_ptr_array_remove (self->undefined_hooks, hook);
+}
+
+static void
+add_unique (GPtrArray *array, WpEventHook * hook)
+{
+  for (guint i = 0; i < array->len; i++)
+    if (g_ptr_array_index (array, i) == hook)
+      return;
+  g_ptr_array_add (array, g_object_ref (hook));
 }
 
 /*!
  * \brief Returns an iterator to iterate over all the registered hooks
+ * \deprecated Use \ref wp_event_dispatcher_new_hooks_for_event_type_iterator
+ * instead.
  * \ingroup wpeventdispatcher
  *
  * \param self the event dispatcher
@@ -327,7 +578,56 @@ wp_event_dispatcher_unregister_hook (WpEventDispatcher * self,
 WpIterator *
 wp_event_dispatcher_new_hooks_iterator (WpEventDispatcher * self)
 {
-  GPtrArray *items =
-      g_ptr_array_copy (self->hooks, (GCopyFunc) g_object_ref, NULL);
+  GPtrArray *items = g_ptr_array_new_with_free_func (g_object_unref);
+  GHashTableIter iter;
+  gpointer value;
+
+  /* Add all defined hooks */
+  g_hash_table_iter_init (&iter, self->defined_hooks);
+  while (g_hash_table_iter_next (&iter, NULL, &value)) {
+    GPtrArray *hooks = value;
+    for (guint i = 0; i < hooks->len; i++) {
+      WpEventHook *hook = g_ptr_array_index (hooks, i);
+      add_unique (items, hook);
+    }
+  }
+
+  /* Add all undefined hooks */
+  for (guint i = 0; i < self->undefined_hooks->len; i++) {
+    WpEventHook *hook = g_ptr_array_index (self->undefined_hooks, i);
+    add_unique (items, hook);
+  }
+
+  return wp_iterator_new_ptr_array (items, WP_TYPE_EVENT_HOOK);
+}
+
+/*!
+ * \brief Returns an iterator to iterate over the registered hooks for a
+ * particular event type.
+ * \ingroup wpeventdispatcher
+ *
+ * \param self the event dispatcher
+ * \param event_type the event type
+ * \return (transfer full): a new iterator
+ * \since 0.5.13
+ */
+WpIterator *
+wp_event_dispatcher_new_hooks_for_event_type_iterator (
+    WpEventDispatcher * self, const gchar *event_type)
+{
+  GPtrArray *items;
+  GPtrArray *hooks;
+
+  hooks = g_hash_table_lookup (self->defined_hooks, event_type);
+  if (hooks) {
+    wp_debug_object (self, "Using %d defined hooks for event type %s",
+        hooks->len, event_type);
+  } else {
+    hooks = self->undefined_hooks;
+    wp_debug_object (self, "Using %d undefined hooks for event type %s",
+        hooks->len, event_type);
+  }
+
+  items = g_ptr_array_copy (hooks, (GCopyFunc) g_object_ref, NULL);
   return wp_iterator_new_ptr_array (items, WP_TYPE_EVENT_HOOK);
 }
