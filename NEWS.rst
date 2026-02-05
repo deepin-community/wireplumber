@@ -1,5 +1,250 @@
+WirePlumber 0.5.13
+~~~~~~~~~~~~~~~~~~
+
+Additions & Enhancements:
+
+  - Added internal filter graph support for audio nodes, allowing users to
+    create audio preprocessing and postprocessing chains without exposing
+    filters to applications, useful for software DSP (!743)
+
+  - Added new Lua Properties API that significantly improves performance by
+    avoiding constant serialization between WpProperties and Lua tables,
+    resulting in approximately 40% faster node linking (!757)
+
+  - Added WpIterator Lua API for more efficient parameter enumeration (!746)
+
+  - Added bash completions for wpctl command (!762)
+
+  - Added script to find suitable volume control when using role-based policy,
+    allowing volume sliders to automatically adjust the volume of the currently
+    active role (e.g., ringing, call, media) (!711)
+
+  - Added experimental HDMI channel detection setting to use HDMI ELD
+    information for channel configuration (!749)
+
+  - Enhanced role-based policy to allow setting preferred target sinks for
+    media role loopbacks via ``policy.role-based.preferred-target`` (!754)
+
+  - Enhanced Bluetooth profile autoswitch logic to be more robust and handle
+    saved profiles correctly, including support for loopback sink nodes (!739)
+
+  - Enhanced ALSA monitor to include ``alsa.*`` device properties on nodes for
+    rule matching (!761)
+
+  - Optimized stream node linking for common cases to reduce latency when new
+    audio/video streams are added (!760)
+
+  - Improved event dispatcher performance by using hash table registration for
+    event hooks, eliminating performance degradation as more hooks are
+    registered (!765)
+
+  - Increased audio headroom for VMware and VirtualBox virtual machines (!756)
+
+  - Added setting to prevent restoring "Off" profiles via
+    ``session.dont-restore-off-profile`` property (!753)
+
+  - Added support for 128 audio channels when compiled with a recent version of
+    PipeWire (pipewire#4995; CI checks in !768)
+
+Fixes:
+
+  - Fixed memory leaks and issues in the modem manager module (!770, !764)
+
+  - Fixed MPRIS module incorrectly treating GHashTable as GObject (!759)
+
+  - Fixed warning messages when process files in ``/proc/<pid>/*`` don't exist,
+    particularly when processes are removed quickly (#816, !717)
+
+  - Fixed MONO audio configuration to only apply to device sink nodes, allowing
+    multi-channel mixing in the graph (!769)
+
+  - Fixed event dispatcher hook registration and removal to avoid spurious
+    errors (!747)
+
+  - Improved logging for standard-link activation failures (!744)
+
+  - Simplified event-hook interest matching for better performance (!758)
+
+Past releases
+~~~~~~~~~~~~~
+
+WirePlumber 0.5.12
+..................
+
+Additions & Enhancements:
+
+  - Added mono audio configuration support via ``node.features.audio.mono``
+    setting that can be changed at runtime with wpctl (!721)
+
+  - Added automatic muting of ALSA devices when a running node is removed,
+    helping prevent loud audio on speakers when headsets are unplugged (!734)
+
+  - Added notifications API module for sending system notifications (!734)
+
+  - Added comprehensive wpctl man page and documentation (!735, #825)
+
+  - Enhanced object interest handling for PipeWire properties on session items (!738)
+
+Fixes:
+
+  - Fixed race condition during shutdown in the permissions portal module that
+    could cause crashes in GDBus signal handling (!748)
+
+  - Added device validity check in state-routes handling to prevent issues
+    when devices are removed during async operations (!737, #844)
+
+  - Fixed Log.critical undefined function error in device-info-cache (!733)
+
+  - Improved device hook documentation and configuration (!736)
+
+WirePlumber 0.5.11
+..................
+
+Additions & Enhancements:
+
+  - Added modem manager module for tracking voice call status and voice call
+    device profile selection hooks to improve phone call audio routing on
+    mobile devices (!722, !729, #819)
+
+  - Added MPRIS media player pause functionality that automatically pauses
+    media playback when the audio target (e.g. headphones) is removed (!699, #764)
+
+  - Added support for human-readable names and localization of settings in
+    ``wireplumber.conf`` with ``wpctl`` displaying localized setting descriptions (!712)
+
+  - Improved default node selection logic to use both session and route
+    priorities when nodes have equal session priorities (!720)
+
+  - Increased USB device priority in the ALSA monitor (!719)
+
+Fixes:
+
+  - Fixed multiple Lua runtime issues including type confusion bugs, stack
+    overflow prevention, and SPA POD array/choice builders (!723, !728)
+
+  - Fixed proxy object lifecycle management by properly clearing the
+    OWNED_BY_PROXY flag when proxies are destroyed to prevent dangling
+    pointers (!732)
+
+  - Fixed state-routes handling to prevent saving unavailable routes and
+    eliminate race conditions during profile switching (!730, #762)
+
+  - Fixed some memory leaks in the script tester and the settings iterator (!727, !726)
+
+  - Fixed a potential crash caused by module-loopback destroying itself when the
+    pipewire connection is closed (#812)
+
+  - Fixed profile saving behavior in ``wpctl set-profile`` command (#808)
+
+  - Fixed GObject introspection closure annotation
+
+WirePlumber 0.5.10
+..................
+
+Fixed a critical crash in ``linking-utils.haveAvailableRoutes`` that was
+introduced accidentally in 0.5.9 and caused loss of audio output on affected
+systems (#797, #799, #800, !713)
+
+WirePlumber 0.5.9
+.................
+
+Additions & Enhancements:
+
+  - Added a new audio node grouping functionality using an external command line
+    tool (!646)
+
+  - The libcamera monitor now supports devices that are not associated with
+    device ids (!701)
+
+  - The wireplumber user systemd service is now associated with dbus.service to
+    avoid strange warnings when dbus exits (!702)
+
+  - Added "SYSLOG_IDENTIFIER", "SYSLOG_FACILITY", "SYSLOG_PID" and "TID" to log
+    messages that are sent to the journal (!709)
+
+Fixes:
+
+  - Fixed a crash of ``wpctl set-default`` on 32-bit architectures (#773)
+
+  - Fixed a crash when a configuration component had no 'provides' field (#771)
+
+  - Reduced the log level of some messages that didn't need to be as high (!695)
+
+  - Fixed another nil reference issue in the alsa.lua monitor script (!704)
+
+  - Fixed name deduplication of v4l2 and libcamera devices (!705)
+
+  - Fixed an issue with wpctl not being able to save settings sometimes (!708, #749)
+
+WirePlumber 0.5.8
+.................
+
+Additions & Enhancements:
+
+  - Added support for handling UCM SplitPCM nodes in the ALSA monitor, which
+    allows native PipeWire channel remapping using loopbacks for devices that
+    use this feature (!685)
+
+  - Introduced new functions to mark WpSpaDevice child objects as pending.
+    This allows properly associating asynchronously created loopback nodes with
+    their parent WpSpaDevice without losing ObjectConfig events (!687, !689)
+
+  - Improved the node name deduplication logic in the ALSA monitor to prevent
+    node names with .2, .3, etc appended to them in some more cases (!688)
+
+  - Added a new script to populate ``session.services``. This is a step towards
+    implementing detection of features that PipeWire can service (!686)
+
+Fixes:
+
+  - Fixed an issue that was causing duplicate Bluetooth SCO (HSP/HFP) source
+    nodes to be shown in UIs (#701, !683)
+
+  - In the BlueZ monitor, marked the source loopback node as non-virtual,
+    addressing how it appears on UIs (#729)
+
+  - Disabled stream-restore for device loopback nodes to prevent unwanted
+    property changes (!691)
+
+  - Fixed ``wp_lua_log_topic_copy()`` to correctly copy topic names (#757)
+
+  - Updated script tests to handle differences in object identifiers
+    (``object.serial`` vs ``node.id``), ensuring proper test behavior (#761)
+
+WirePlumber 0.5.7
+.................
+
+Highlights:
+
+  - Fixed an issue that would cause random profile switching when an application
+    was trying to capture from non-Bluetooth devices (#715, #634, !669)
+
+  - Fixed an issue that would cause strange profile selection issues [choices
+    not being remembered or unavailable routes being selected] (#734)
+
+  - Added a timer that delays switching Bluetooth headsets to the HSP/HFP
+    profile, avoiding needless rapid switching when an application is trying to
+    probe device capabilities instead of actually capturing audio (!664)
+
+  - Improved libcamera/v4l2 device deduplication logic to work with more complex
+    devices (!674, !675, #689, #708)
+
+Fixes:
+
+  - Fixed two memory leaks in module-mixer-api and module-dbus-connection
+    (!672, !673)
+
+  - Fixed a crash that could occur in module-reserve-device (!680, #742)
+
+  - Fixed an issue that would cause the warning "[string "alsa.lua"]:182:
+    attempt to concatenate a nil value (local 'node_name')" to appear in the
+    logs when an ALSA device was busy, breaking node name deduplication (!681)
+
+  - Fixed an issue that could make find-preferred-profile.lua crash instead of
+    properly applying profile priority rules (#751)
+
 WirePlumber 0.5.6
-~~~~~~~~~~~~~~~~~
+.................
 
 Additions:
 
@@ -26,9 +271,6 @@ Fixes:
 
   - Fix an issue where switching between Bluetooth profiles would temporarily
     link active audio streams to the internal speakers (!655)
-
-Past releases
-~~~~~~~~~~~~~
 
 WirePlumber 0.5.5
 .................

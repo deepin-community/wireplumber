@@ -14,7 +14,7 @@ u.nodes = {}
 u.lnkbls = {}
 u.lnkbl_count = 0
 
-function u.createDeviceNode (name, media_class)
+function u.createDeviceNode (name, media_class, props)
   local properties = {}
   properties ["node.name"] = name
   properties ["media.class"] = media_class
@@ -22,6 +22,11 @@ function u.createDeviceNode (name, media_class)
     properties ["factory.name"] = "support.null-audio-sink"
   else
     properties ["factory.name"] = "audiotestsrc"
+  end
+  if props ~= nil then
+    for k, v in pairs (props) do
+      properties[k] = v
+    end
   end
 
   node = Node ("adapter", properties)
@@ -97,9 +102,9 @@ u.settings_metadata = cu.get_object_manager ("metadata"):lookup {
 assert (u.settings_metadata ~= nil)
 
 -- update the defined target for stream session item in metadata.
-function u.setTargetInMetadata (prop, target_node_name)
+function u.setTargetInMetadata (prop, target_node_name, target_property)
   u.default_metadata:set (u.lnkbls ["stream-node"].properties ["node.id"], prop,
-      "Spa:Id", u.lnkbls [target_node_name].properties ["node.id"])
+      "Spa:Id", u.lnkbls [target_node_name].properties [target_property])
 end
 
 function u.linkablesReady ()
