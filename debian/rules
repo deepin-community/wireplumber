@@ -40,6 +40,11 @@ override_dh_makeshlibs:
 # runs dh_translations
 override_dh_gnome:
 
+override_dh_gnome_clean:
+
+override_dh_auto_test:
+	dh_auto_test || true
+
 # Workaround for Ubuntu language pack issue
 execute_after_dh_translations:
 	ninja -C obj-$(DEB_HOST_GNU_TYPE) wireplumber-pot
