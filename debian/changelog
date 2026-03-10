@@ -1,3 +1,9 @@
+wireplumber (0.5.13-1deepin1) unstable; urgency=medium
+
+  * Fix rules for gnome and test
+
+ -- zhaochengyi <zhaochengyi@uniontech.com>  Tue, 10 Mar 2026 14:25:53 +0800
+
 wireplumber (0.5.13-1) unstable; urgency=medium
 
   * New upstream version (Closes: #1124139)
