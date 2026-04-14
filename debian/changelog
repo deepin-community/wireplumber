@@ -1,3 +1,9 @@
+wireplumber (0.5.13-1deepin3) unstable; urgency=medium
+
+  * Adapt volume algorithm to match pipewire's power scale patch
+
+ -- qaqland <anguoli@uniontech.com>  Tue, 14 Apr 2026 13:56:19 +0800
+
 wireplumber (0.5.13-1deepin2) unstable; urgency=medium
 
   * Backport critical security and stability fixes to 0.5.13
