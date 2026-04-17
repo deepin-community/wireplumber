@@ -1,3 +1,12 @@
+wireplumber (0.5.13-1deepin2) unstable; urgency=medium
+
+  * Backport critical security and stability fixes to 0.5.13
+      - Fix memory leak in event hook event type matching (g_autoptr fix)
+      - Fix property list memory leak in Lua scripting module loader
+      - Fix module memory leak by ensuring parent destructor is called
+
+ -- zhaochengyi <zhaochengyi@uniontech.com>  Fri, 17 Apr 2026 15:53:11 +0800
+
 wireplumber (0.5.13-1deepin1) unstable; urgency=medium
 
   * Fix rules for gnome and test
