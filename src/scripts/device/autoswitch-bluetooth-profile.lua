@@ -86,42 +86,6 @@ function getCurrentProfile (device)
   return nil
 end
 
-function highestPrioProfileWithInputRoute (device)
-  local found_profile = nil
-  for p in device:iterate_params ("EnumRoute") do
-    local route = cutils.parseParam (p, "EnumRoute")
-    if route ~= nil and route.profiles ~= nil and route.direction == "Input" then
-      for _, v in pairs (route.profiles) do
-        local p = findProfile (device, v)
-        if p ~= nil then
-          if found_profile == nil or found_profile.priority < p.priority then
-            found_profile = p
-          end
-        end
-      end
-    end
-  end
-  return found_profile
-end
-
-function highestPrioProfileWithoutInputRoute (device)
-  local found_profile = nil
-  for p in device:iterate_params ("EnumRoute") do
-    local route = cutils.parseParam (p, "EnumRoute")
-    if route ~= nil and route.profiles ~= nil and route.direction ~= "Input" then
-      for _, v in pairs (route.profiles) do
-        local p = findProfile (device, v)
-        if p ~= nil then
-          if found_profile == nil or found_profile.priority < p.priority then
-            found_profile = p
-          end
-        end
-      end
-    end
-  end
-  return found_profile
-end
-
 function hasProfileInputRoute (device, profile_index)
   for p in device:iterate_params ("EnumRoute") do
     local route = cutils.parseParam (p, "EnumRoute")
@@ -136,6 +100,51 @@ function hasProfileInputRoute (device, profile_index)
   return false
 end
 
+function isHeadsetProfile (device, profile)
+  if hasProfileInputRoute (device, profile.index) and
+      (string.find (profile.name, "^headset%-head%-unit") or profile.name == "bap-duplex") then
+    return true
+  else
+    return false
+  end
+end
+
+function highestPrioHeadsetProfile (device)
+  local found_profile = nil
+  for p in device:iterate_params ("EnumRoute") do
+    local route = cutils.parseParam (p, "EnumRoute")
+    if route ~= nil and route.profiles ~= nil and route.direction == "Input" then
+      for _, v in pairs (route.profiles) do
+        local p = findProfile (device, v)
+        if p ~= nil and isHeadsetProfile (device, p) then
+          if found_profile == nil or found_profile.priority < p.priority then
+            found_profile = p
+          end
+        end
+      end
+    end
+  end
+  return found_profile
+end
+
+function highestPrioNonHeadsetProfile (device)
+  local found_profile = nil
+  for p in device:iterate_params ("EnumRoute") do
+    local route = cutils.parseParam (p, "EnumRoute")
+    if route ~= nil and route.profiles ~= nil and route.direction ~= "Input" then
+      for _, v in pairs (route.profiles) do
+        local p = findProfile (device, v)
+        if p ~= nil and not isHeadsetProfile (device, p) then
+          if found_profile == nil or found_profile.priority < p.priority then
+            found_profile = p
+          end
+        end
+      end
+    end
+  end
+  return found_profile
+end
+
 function switchDeviceToHeadsetProfile (dev_id, device_om)
   -- Find the actual device
   local device = device_om:lookup {
@@ -148,10 +157,12 @@ function switchDeviceToHeadsetProfile (dev_id, device_om)
 
   -- Do not switch if the current profile is already a headset profile
   local cur_profile = getCurrentProfile (device)
-  if cur_profile ~= nil and
-      hasProfileInputRoute (device, cur_profile.index) then
+  if cur_profile ~= nil and isHeadsetProfile (device, cur_profile) then
     log:info (device,
         "Current profile is already a headset profile, no need to switch")
+    return
+  elseif cur_profile == nil then
+    log:info (device, "Could not get current profile, not switching")
     return
   end
 
@@ -160,12 +171,13 @@ function switchDeviceToHeadsetProfile (dev_id, device_om)
   local profile_name = getSavedHeadsetProfile (device)
   if profile_name ~= nil then
     profile = findProfile (device, nil, profile_name)
-    if profile ~= nil and not hasProfileInputRoute (device, profile.index) then
+    if profile ~= nil and not isHeadsetProfile (device, profile) then
       saveHeadsetProfile (device, nil, false)
+      profile = nil
     end
   end
   if profile == nil then
-    profile = highestPrioProfileWithInputRoute (device)
+    profile = highestPrioHeadsetProfile (device)
   end
 
   -- Switch if headset profile was found
@@ -195,10 +207,12 @@ function restoreProfile (dev_id, device_om)
 
   -- Do not restore if the current profile is already a non-headset profile
   local cur_profile = getCurrentProfile (device)
-  if cur_profile ~= nil and
-      not hasProfileInputRoute (device, cur_profile.index) then
+  if cur_profile ~= nil and not isHeadsetProfile (device, cur_profile) then
     log:info (device,
         "Current profile is already a non-headset profile, no need to restore")
+    return
+  elseif cur_profile == nil then
+    log:info (device, "Could not get current profile, not switching")
     return
   end
 
@@ -207,12 +221,13 @@ function restoreProfile (dev_id, device_om)
   local profile_name = getSavedNonHeadsetProfile (device)
   if profile_name ~= nil then
     profile = findProfile (device, nil, profile_name)
-    if profile ~= nil and hasProfileInputRoute (device, profile.index) then
+    if profile ~= nil and isHeadsetProfile (device, profile) then
       saveNonHeadsetProfile (device, nil)
+      profile = nil
     end
   end
   if profile == nil then
-    profile = highestPrioProfileWithoutInputRoute (device)
+    profile = highestPrioNonHeadsetProfile (device)
   end
 
   -- Restore if non-headset profile was found
@@ -230,7 +245,7 @@ function restoreProfile (dev_id, device_om)
   end
 end
 
-function triggerSwitchDeviceToHeadsetProfile (dev_id, device_om)
+function triggerSwitchDeviceToHeadsetProfile (source, dev_id)
   -- Always clear any pending restore/switch callbacks when triggering a new switch
   if restore_timeout_source[dev_id] ~= nil then
     restore_timeout_source[dev_id]:destroy ()
@@ -247,11 +262,14 @@ function triggerSwitchDeviceToHeadsetProfile (dev_id, device_om)
   log:info ("Triggering profile switch on device " .. tostring (dev_id))
   switch_timeout_source[dev_id] = Core.timeout_add (PROFILE_SWITCH_TIMEOUT_MSEC, function ()
     switch_timeout_source[dev_id] = nil
-    switchDeviceToHeadsetProfile (dev_id, device_om)
+
+    local e = source:call ("create-event", "autoswitch-bluez-headset-profile", nil, nil)
+    e:set_data ("device-id", dev_id)
+    EventDispatcher.push_event (e)
   end)
 end
 
-function triggerRestoreProfile (dev_id, device_om)
+function triggerRestoreProfile (source, dev_id)
   -- Always clear any pending restore/switch callbacks when triggering a new restore
   if switch_timeout_source[dev_id] ~= nil then
     switch_timeout_source[dev_id]:destroy ()
@@ -268,7 +286,10 @@ function triggerRestoreProfile (dev_id, device_om)
   log:info ("Triggering profile restore on device " .. tostring (dev_id))
   restore_timeout_source[dev_id] = Core.timeout_add (PROFILE_RESTORE_TIMEOUT_MSEC, function ()
     restore_timeout_source[dev_id] = nil
-    restoreProfile (dev_id, device_om)
+
+    local e = source:call ("create-event", "autoswitch-bluez-a2dp-profile", nil, nil)
+    e:set_data ("device-id", dev_id)
+    EventDispatcher.push_event (e)
   end)
 end
 
@@ -314,8 +335,7 @@ function getLinkedBluetoothLoopbackSourceNodeForStream (stream, node_om, link_om
           Constraint { "bluez5.loopback", "!", "true", type = "pw" },
           Constraint { "node.link-group", "=", filter_link_group, type = "pw" }
         } do
-        local filter_stream_id = filter_stream_node["bound-id"]
-        local bt_node = getLinkedBluetoothLoopbackSourceNodeForStream (filter_stream_id, node_om, link_om, visited_link_groups)
+        local bt_node = getLinkedBluetoothLoopbackSourceNodeForStream (filter_stream_node, node_om, link_om, visited_link_groups)
         if bt_node ~= nil then
           return bt_node
         end
@@ -345,6 +365,60 @@ function isBluetoothLoopbackSourceNodeLinkedToStream (bt_node, node_om, link_om)
   return false
 end
 
+local switch_profile_hook = AsyncEventHook {
+  name = "switch-profile@autoswitch-bluetooth-profile",
+  interests = {
+    EventInterest {
+      Constraint { "event.type", "=", "autoswitch-bluez-headset-profile" },
+    },
+  },
+  steps = {
+    start = {
+      next = "none",
+      execute = function (event, transition)
+        local source = event:get_source ()
+        local device_om = source:call ("get-object-manager", "device")
+        local device_id = event:get_data ("device-id")
+
+        -- Switch profile
+        switchDeviceToHeadsetProfile (device_id, device_om)
+
+        -- Wait until the profile is applied
+        Core.sync (function ()
+          transition:advance ()
+        end)
+      end
+    },
+  }
+}
+
+local restore_profile_hook = AsyncEventHook {
+  name = "restore-profile@autoswitch-bluetooth-profile",
+  interests = {
+    EventInterest {
+      Constraint { "event.type", "=", "autoswitch-bluez-a2dp-profile" },
+    },
+  },
+  steps = {
+    start = {
+      next = "none",
+      execute = function (event, transition)
+        local source = event:get_source ()
+        local device_om = source:call ("get-object-manager", "device")
+        local device_id = event:get_data ("device-id")
+
+        -- Restore profile
+        restoreProfile (device_id, device_om)
+
+        -- Wait until the profile is applied
+        Core.sync (function ()
+          transition:advance ()
+        end)
+      end
+    },
+  }
+}
+
 local evaluate_bluetooth_profiles_hook = SimpleEventHook {
   name = "evaluate-bluetooth-profiles@autoswitch-bluetooth-profile",
   interests = {
@@ -355,7 +429,6 @@ local evaluate_bluetooth_profiles_hook = SimpleEventHook {
   execute = function (event)
     local source = event:get_source ()
     local node_om = source:call ("get-object-manager", "node")
-    local device_om = source:call ("get-object-manager", "device")
     local link_om = source:call ("get-object-manager", "link")
 
     -- Evaluate all bluetooth loopback source nodes, and switch to headset
@@ -376,9 +449,9 @@ local evaluate_bluetooth_profiles_hook = SimpleEventHook {
 
       if bt_node_state == "running" and
           isBluetoothLoopbackSourceNodeLinkedToStream (bt_node, node_om, link_om) then
-        triggerSwitchDeviceToHeadsetProfile (bt_dev_id, device_om)
+        triggerSwitchDeviceToHeadsetProfile (source, bt_dev_id)
       else
-        triggerRestoreProfile (bt_dev_id, device_om)
+        triggerRestoreProfile (source, bt_dev_id)
       end
     end
   end
@@ -443,6 +516,17 @@ local state_changed_hook = SimpleEventHook {
   },
   execute = function (event)
     local source = event:get_source ()
+    local node = event:get_subject ()
+    local old_state = event:get_properties ()["event.subject.old-state"]
+    local new_state = event:get_properties ()["event.subject.new-state"]
+
+    log:info (node, "state changed from '" .. old_state .. "' to '" .. new_state .. "'")
+
+    -- Dont evaluate if the state changed from idle to suspended
+    if old_state == "idle" and new_state == "suspended" then
+      return
+    end
+
     source:call ("push-event", "evaluate-bluetooth-profiles", nil, nil)
   end
 }
@@ -464,7 +548,7 @@ local node_added_hook = SimpleEventHook {
 }
 
 local device_profile_changed_hook = SimpleEventHook {
-  name = "device/store-user-selected-profile",
+  name = "bluez-profile-changed@autoswitch-bluetooth-profile",
   interests = {
     EventInterest {
       Constraint { "event.type", "=", "device-params-changed" },
@@ -478,7 +562,7 @@ local device_profile_changed_hook = SimpleEventHook {
     -- Always save the current profile when it changes
     local cur_profile = getCurrentProfile (device)
     if cur_profile ~= nil then
-      if hasProfileInputRoute (device, cur_profile.index) then
+      if isHeadsetProfile (device, cur_profile) then
         log:info (device, "Saving headset profile " .. cur_profile.name)
         saveHeadsetProfile (device, cur_profile.name, cur_profile.save)
       else
@@ -508,6 +592,8 @@ function evaluateAutoswitch ()
     capture_stream_links = {}
     restore_timeout_source = {}
     switch_timeout_source = {}
+    switch_profile_hook:register ()
+    restore_profile_hook:register ()
     evaluate_bluetooth_profiles_hook:register ()
     link_added_hook:register ()
     link_removed_hook:register ()
@@ -519,6 +605,8 @@ function evaluateAutoswitch ()
     capture_stream_links = nil
     restore_timeout_source = nil
     switch_timeout_source = nil
+    switch_profile_hook:remove ()
+    restore_profile_hook:remove ()
     evaluate_bluetooth_profiles_hook:remove ()
     link_added_hook:remove ()
     link_removed_hook:remove ()
