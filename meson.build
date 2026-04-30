@@ -1,5 +1,5 @@
 project('wireplumber', ['c'],
-  version : '0.5.13',
+  version : '0.5.14',
   license : 'MIT',
   meson_version : '>= 0.59.0',
   default_options : [
@@ -88,27 +88,24 @@ if build_modules
         error('Specified Lua version "' + lua_version_requested + '" not found')
       endif
     else
-      lua_dep = dependency('lua-5.4', required: false)
-      if not lua_dep.found()
-        lua_dep = dependency('lua5.4', required: false)
-      endif
-      if not lua_dep.found()
-        lua_dep = dependency('lua54', required: false)
-      endif
-      if not lua_dep.found()
-        lua_dep = dependency('lua-5.3', required: false)
-      endif
-      if not lua_dep.found()
-        lua_dep = dependency('lua5.3', required: false)
-      endif
-      if not lua_dep.found()
-        lua_dep = dependency('lua53', required: false)
-      endif
+      lua_versions = [
+        '-5.5', '5.5', '55',
+        '-5.4', '5.4', '54',
+        '-5.3', '5.3', '53',
+      ]
+
+      foreach v : lua_versions
+        lua_dep = dependency('lua' + v, required: false)
+        if lua_dep.found()
+          break
+        endif
+      endforeach
+
       if not lua_dep.found()
         lua_dep = dependency('lua', version: ['>=5.3.0'], required: false)
       endif
       if not lua_dep.found()
-        error ('Could not find lua. Lua version 5.4 or 5.3 required')
+        error ('Could not find lua. Lua version 5.5, 5.4 or 5.3 required')
       endif
     endif
   else

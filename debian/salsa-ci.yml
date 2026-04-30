@@ -8,6 +8,7 @@ reprotest:
 
 variables:
   SALSA_CI_ENABLE_BUILD_PACKAGE_PROFILES: 1
+  SALSA_CI_DISABLE_LICENSERECON: 0
 
 test-build-profiles:
   extends: .test-build-package-profiles
