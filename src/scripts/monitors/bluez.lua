@@ -7,7 +7,6 @@
 
 COMBINE_OFFSET = 64
 LOOPBACK_SOURCE_ID = 128
-LOOPBACK_SINK_ID = 129
 DEVICE_SOURCE_ID = 0
 DEVICE_SINK_ID = 1
 
@@ -22,15 +21,10 @@ config.rules = Conf.get_section_as_json ("monitor.bluez.rules", Json.Array {})
 -- This is not a setting, it must always be enabled
 config.properties["api.bluez5.connection-info"] = true
 
--- Properties used for previously creating a SCO source node. key: SPA device id
-sco_source_node_properties = {}
-
--- Properties used for previously creating a SCO or A2DP sink node. key: SPA device id
-sco_a2dp_sink_node_properties = {}
-
 devices_om = ObjectManager {
   Interest {
     type = "device",
+    Constraint { "device.api", "=", "bluez5" },
   }
 }
 
@@ -217,13 +211,15 @@ function createSetNode(parent, id, type, factory, properties)
     )
   end
 
-  properties["node.virtual"] = false
-  properties["device.api"] = "bluez5"
-  properties["api.bluez5.set.members"] = nil
-  properties["api.bluez5.set.channels"] = nil
-  properties["api.bluez5.set.leader"] = true
-  properties["audio.position"] = Json.Array (channels)
-  args["combine.props"] = Json.Object (properties)
+  local combine_props = properties:parse ()
+  combine_props["node.virtual"] = false
+  combine_props["device.api"] = "bluez5"
+  combine_props["api.bluez5.set.members"] = nil
+  combine_props["api.bluez5.set.channels"] = nil
+  combine_props["api.bluez5.set.leader"] = true
+  combine_props["audio.position"] = Json.Array (channels)
+
+  args["combine.props"] = Json.Object (combine_props)
   args["stream.props"] = Json.Object {}
   args["stream.rules"] = Json.Array (rules)
 
@@ -232,6 +228,12 @@ function createSetNode(parent, id, type, factory, properties)
   local combine_properties = {}
   log:info("Device set node: " .. args_string)
   return LocalModule("libpipewire-module-combine-stream", args_string, combine_properties)
+end
+
+function getNodeName (prefix, bt_address, dev_name, node_id)
+  local name = prefix .. "." .. (bt_address or dev_name) .. "." .. tostring(node_id)
+  -- sanitize name
+  return name:gsub("([^%w_%-%.])", "_")
 end
 
 function createNode(parent, id, type, factory, properties)
@@ -262,35 +264,11 @@ function createNode(parent, id, type, factory, properties)
   -- sanitize description, replace ':' with ' '
   properties["node.description"] = desc:gsub("(:)", " ")
 
+  -- set the node name
   local name_prefix = ((factory:find("sink") and "bluez_output") or
        (factory:find("source") and "bluez_input" or factory))
-
-  -- hide the source node because we use the loopback source instead
-  if parent:get_managed_object (LOOPBACK_SOURCE_ID) ~= nil and
-       (factory == "api.bluez5.sco.source" or
-         (factory == "api.bluez5.a2dp.source" and cutils.parseBool (properties["api.bluez5.a2dp-duplex"]))) then
-    properties["bluez5.loopback-target"] = true
-    properties["api.bluez5.internal"] = true
-    -- add 'internal' to name prefix to not be confused with loopback node
-    name_prefix = name_prefix .. "_internal"
-  end
-
-  -- hide the sink node because we use the loopback sink instead
-  if parent:get_managed_object (LOOPBACK_SINK_ID) ~= nil and
-       (factory == "api.bluez5.sco.sink" or
-           factory == "api.bluez5.a2dp.sink") then
-    properties["bluez5.sink-loopback-target"] = true
-    properties["api.bluez5.internal"] = true
-    -- add 'internal' to name prefix to not be confused with loopback node
-    name_prefix = name_prefix .. "_internal"
-  end
-
-  -- set the node name
-  local name = name_prefix .. "." ..
-      (properties["api.bluez5.address"] or dev_props["device.name"]) .. "." ..
-      tostring(id)
-  -- sanitize name
-  properties["node.name"] = name:gsub("([^%w_%-%.])", "_")
+  properties["node.name"] = getNodeName (name_prefix,
+      properties["api.bluez5.address"], dev_props["device.name"], id)
 
   -- set priority
   if not properties["priority.driver"] then
@@ -318,13 +296,16 @@ function createNode(parent, id, type, factory, properties)
     parent:set_managed_pending(id)
   else
     log:info("Create node: " .. properties["node.name"] .. ": " .. factory .. " " .. tostring (id))
-    if factory == "api.bluez5.sco.source" then
+
+    -- Set sink/source specific properties
+    if factory == "api.bluez5.sco.source" or
+        (factory == "api.bluez5.a2dp.source" and cutils.parseBool (properties["api.bluez5.a2dp-duplex"])) then
       properties["bluez5.loopback"] = false
-      sco_source_node_properties[parent_spa_id] = properties
-    elseif factory == "api.bluez5.sco.sink" or factory == "api.bluez5.a2dp.sink" then
-      properties["bluez5.sink-loopback"] = false
-      sco_a2dp_sink_node_properties[parent_spa_id] = properties
+      if properties["api.bluez5.profile"] ~= "headset-audio-gateway" then
+        properties["api.bluez5.internal"] = true
+      end
     end
+
     local node = LocalNode("adapter", properties)
     node:activate(Feature.Proxy.BOUND)
     parent:store_managed_object(id, node)
@@ -334,20 +315,8 @@ end
 function removeNode(parent, id)
   local dev_props = parent.properties
   local parent_spa_id = tonumber(dev_props["spa.object.id"])
-  local src_properties = sco_source_node_properties[parent_spa_id]
-  local sink_properties = sco_a2dp_sink_node_properties[parent_spa_id]
 
   log:debug("Remove node: " .. tostring (id))
-
-  if src_properties ~= nil and id == tonumber(src_properties["spa.object.id"]) then
-    log:debug("Clear old SCO source properties")
-    sco_source_node_properties[parent_spa_id] = nil
-  end
-
-  if sink_properties ~= nil and id == tonumber(sink_properties["spa.object.id"]) then
-    log:debug("Clear old SCO-A2DP sink properties")
-    sco_a2dp_sink_node_properties[parent_spa_id] = nil
-  end
 
   -- Clear also the device set module, if any
   parent:store_managed_object(id + COMBINE_OFFSET, nil)
@@ -422,8 +391,7 @@ function createDevice(parent, id, type, factory, properties)
 end
 
 function removeDevice(parent, id)
-  sco_source_node_properties[id] = nil
-  sco_a2dp_sink_node_properties[id] = nil
+  log:debug("Remove device: " .. tostring (id))
 end
 
 function createMonitor()
@@ -441,7 +409,18 @@ function createMonitor()
   return monitor
 end
 
-function CreateDeviceLoopbackSource (dev_name, dec_desc, dev_id)
+function CreateDeviceLoopbackSource (dev_props, dev_id)
+  local dev_name = dev_props["api.bluez5.address"] or dev_props["device.name"]
+  local dec_desc = dev_props["device.description"] or dev_props["device.name"]
+      or dev_props["device.nick"] or dev_props["device.alias"] or "bluetooth-device"
+  local target_object = getNodeName ("bluez_input",
+      dev_props["api.bluez5.address"], dev_props["device.name"], DEVICE_SOURCE_ID)
+
+  -- sanitize description, replace ':' with ' '
+  dec_desc = dec_desc:gsub("(:)", " ")
+
+  log:info("create SCO source loopback node: " .. dev_name)
+
   local args = Json.Object {
     ["capture.props"] = Json.Object {
       ["node.name"] = string.format ("bluez_capture_internal.%s", dev_name),
@@ -456,6 +435,7 @@ function CreateDeviceLoopbackSource (dev_name, dec_desc, dev_id)
       ["node.dont-fallback"] = true,
       ["node.linger"] = true,
       ["state.restore-props"] = false,
+      ["target.object"] = target_object,
     },
     ["playback.props"] = Json.Object {
       ["node.name"] = string.format ("bluez_input.%s", dev_name),
@@ -468,47 +448,6 @@ function CreateDeviceLoopbackSource (dev_name, dec_desc, dev_id)
       ["device.routes"] = "1",
       ["priority.session"] = 2010,
       ["bluez5.loopback"] = true,
-      ["filter.smart"] = true,
-      ["filter.smart.target"] = Json.Object {
-        ["bluez5.loopback-target"] = true,
-        ["bluez5.loopback"] = false,
-        ["device.id"] = dev_id
-      }
-    }
-  }
-  return LocalModule("libpipewire-module-loopback", args:get_data(), {})
-end
-
-function CreateDeviceLoopbackSink (dev_name, dec_desc, dev_id)
-  local args = Json.Object {
-    ["capture.props"] = Json.Object {
-      ["node.name"] = string.format ("bluez_output.%s", dev_name),
-      ["node.description"] = string.format ("%s", dec_desc),
-      ["node.virtual"] = false,
-      ["audio.position"] = "[FL, FR]",
-      ["media.class"] = "Audio/Sink",
-      ["device.id"] = dev_id,
-      ["card.profile.device"] = DEVICE_SINK_ID,
-      ["device.routes"] = "1",
-      ["priority.session"] = 2010,
-      ["bluez5.sink-loopback"] = true,
-      ["filter.smart"] = true,
-      ["filter.smart.target"] = Json.Object {
-        ["bluez5.sink-loopback-target"] = true,
-        ["bluez5.sink-loopback"] = false,
-        ["device.id"] = dev_id
-      }
-    },
-    ["playback.props"] = Json.Object {
-      ["node.name"] = string.format ("bluez_playback_internal.%s", dev_name),
-      ["media.class"] = "Stream/Output/Audio/Internal",
-      ["node.description"] =
-          string.format ("Bluetooth internal playback stream for %s", dec_desc),
-      ["bluez5.sink-loopback"] = true,
-      ["node.passive"] = true,
-      ["node.dont-fallback"] = true,
-      ["node.linger"] = true,
-      ["state.restore-props"] = false,
     }
   }
   return LocalModule("libpipewire-module-loopback", args:get_data(), {})
@@ -519,11 +458,6 @@ function checkProfiles (dev)
   local props = dev.properties
   local device_spa_id = tonumber(props["spa.object.id"])
 
-  -- Don't create loopback source device if autoswitch is disabled
-  if not Settings.get_boolean ("bluetooth.autoswitch-to-headset-profile") then
-    return
-  end
-
   -- Get the associated BT SpaDevice
   local internal_id = tostring (props["spa.object.id"])
   local spa_device = monitor:get_managed_object (internal_id)
@@ -531,84 +465,58 @@ function checkProfiles (dev)
     return
   end
 
-  -- Ignore devices that don't support both A2DP sink and HSP/HFP profiles
-  local has_a2dpsink_profile = false
+  -- Check if the device supports headset profile
   local has_headset_profile = false
   for p in dev:iterate_params("EnumProfile") do
     local profile = cutils.parseParam (p, "EnumProfile")
-    if profile.name:find ("a2dp") and profile.name:find ("sink") then
-      has_a2dpsink_profile = true
-    elseif profile.name:find ("headset") then
+    if profile.name:find ("headset") then
       has_headset_profile = true
     end
   end
-  if not has_a2dpsink_profile or not has_headset_profile then
-    return
+
+  -- Setup Route/Port correctly for loopback nodes
+  if has_headset_profile then
+    local param = Pod.Object ({
+        "Spa:Pod:Object:Param:Props",
+        "Props",
+        params = Pod.Struct ({ "bluez5.autoswitch-routes", true })
+    })
+    dev:set_param("Props", param)
   end
 
-  -- Create the source loopback device if never created before
-  local source_loopback = spa_device:get_managed_object (LOOPBACK_SOURCE_ID)
-  if source_loopback == nil then
-    local dev_name = props["api.bluez5.address"] or props["device.name"]
-    local dec_desc = props["device.description"] or props["device.name"]
-      or props["device.nick"] or props["device.alias"] or "bluetooth-device"
-
-    log:info("create SCO source loopback node: " .. dev_name)
-
-    -- sanitize description, replace ':' with ' '
-    dec_desc = dec_desc:gsub("(:)", " ")
-    source_loopback = CreateDeviceLoopbackSource (dev_name, dec_desc, device_id)
-    spa_device:store_managed_object(LOOPBACK_SOURCE_ID, source_loopback)
-
-    -- recreate any sco source node
-    local properties = sco_source_node_properties[device_spa_id]
-    if properties ~= nil then
-      local node_id = tonumber(properties["spa.object.id"])
-      local node = spa_device:get_managed_object (node_id)
-      if node ~= nil then
-        log:info("Recreate node: " .. properties["node.name"] .. ": " ..
-          properties["factory.name"] .. " " .. tostring (node_id))
-
-        spa_device:store_managed_object(node_id, nil)
-
-        properties["bluez5.loopback-target"] = true
-        properties["api.bluez5.internal"] = true
-        node = LocalNode("adapter", properties)
-        node:activate(Feature.Proxy.BOUND)
-        spa_device:store_managed_object(node_id, node)
+  if has_headset_profile then
+    -- Always create the source loopback device if autoswitch is enabled.
+    -- Otherwise, only create the source loopback device if the current profile
+    -- is headset, and destroy the source loopback deivce if the current profile
+    -- is A2DP.
+    if Settings.get_boolean ("bluetooth.autoswitch-to-headset-profile") then
+      -- Create source loopback
+      local source_loopback = spa_device:get_managed_object (LOOPBACK_SOURCE_ID)
+      if source_loopback == nil and has_headset_profile then
+        source_loopback = CreateDeviceLoopbackSource (props, device_id)
+        spa_device:store_managed_object(LOOPBACK_SOURCE_ID, source_loopback)
       end
-    end
-  end
+    else
+      -- Check if current profile is headset
+      local is_current_profile_headset = false
+      for p in dev:iterate_params("Profile") do
+        local profile = cutils.parseParam (p, "Profile")
+        if profile.name:find ("headset") then
+          is_current_profile_headset = true
+        end
+        break
+      end
 
-  local sink_loopback = spa_device:get_managed_object (LOOPBACK_SINK_ID)
-  if sink_loopback == nil then
-    local dev_name = props["api.bluez5.address"] or props["device.name"]
-    local dec_desc = props["device.description"] or props["device.name"]
-      or props["device.nick"] or props["device.alias"] or "bluetooth-device"
-
-    log:info("create SCO-A2DP sink loopback node: " .. dev_name)
-
-    -- sanitize description, replace ':' with ' '
-    dec_desc = dec_desc:gsub("(:)", " ")
-    sink_loopback = CreateDeviceLoopbackSink (dev_name, dec_desc, device_id)
-    spa_device:store_managed_object(LOOPBACK_SINK_ID, sink_loopback)
-
-    -- recreate any sco-a2dp sink node
-    local properties = sco_a2dp_sink_node_properties[device_spa_id]
-    if properties ~= nil then
-      local node_id = tonumber(properties["spa.object.id"])
-      local node = spa_device:get_managed_object (node_id)
-      if node ~= nil then
-        log:info("Recreate node: " .. properties["node.name"] .. ": " ..
-          properties["factory.name"] .. " " .. tostring (node_id))
-
-        spa_device:store_managed_object(node_id, nil)
-
-        properties["bluez5.sink-loopback-target"] = true
-        properties["api.bluez5.internal"] = true
-        node = LocalNode("adapter", properties)
-        node:activate(Feature.Proxy.BOUND)
-        spa_device:store_managed_object(node_id, node)
+      if is_current_profile_headset then
+        -- Create source loopback
+        local source_loopback = spa_device:get_managed_object (LOOPBACK_SOURCE_ID)
+        if source_loopback == nil and has_headset_profile then
+          source_loopback = CreateDeviceLoopbackSource (props, device_id)
+          spa_device:store_managed_object(LOOPBACK_SOURCE_ID, source_loopback)
+        end
+      else
+        -- Destroy source loopback
+        spa_device:store_managed_object(LOOPBACK_SOURCE_ID, nil)
       end
     end
   end
@@ -617,16 +525,12 @@ end
 function onDeviceParamsChanged (dev, param_name)
   if param_name == "EnumProfile" then
     checkProfiles (dev)
+  elseif param_name == "Profile" then
+    checkProfiles (dev)
   end
 end
 
 devices_om:connect("object-added", function(_, dev)
-  -- Ignore all devices that are not BT devices
-  if dev.properties["device.api"] ~= "bluez5" then
-    return
-  end
-
-  -- check available profiles
   dev:connect ("params-changed", onDeviceParamsChanged)
   checkProfiles (dev)
 end)
@@ -657,3 +561,15 @@ end
 nodes_om:activate()
 devices_om:activate()
 device_set_nodes_om:activate()
+
+function evaluateAutoswitch ()
+  -- Evaluate loopbacks on all BT devices
+  for dev in devices_om:iterate () do
+    checkProfiles (dev)
+  end
+end
+
+Settings.subscribe ("bluetooth.autoswitch-to-headset-profile", function ()
+  evaluateAutoswitch ()
+end)
+evaluateAutoswitch ()
