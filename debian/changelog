@@ -1,3 +1,9 @@
+wireplumber (0.5.14-1deepin1) unstable; urgency=medium
+
+  * fix: Adapt volume algorithm to match pipewire's power scale patch
+
+ -- anguoli <zcy@zcy-PC>  Wed, 06 May 2026 18:02:57 +0800
+
 wireplumber (0.5.14-1) unstable; urgency=medium
 
   * New upstream version.
