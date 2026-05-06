@@ -1,0 +1,36 @@
+From 374c48b339249a7c885133a541b6299b60454fe3 Mon Sep 17 00:00:00 2001
+From: Jonas Holmberg <jonashg@axis.com>
+Date: Fri, 20 Mar 2026 14:22:04 +0100
+Subject: [PATCH 1/3] event-dispatcher: Dispatch one event at a time
+
+Return after dispatching one event so that other GSources also can be
+dispatched in between events when there are many events in queue.
+---
+ lib/wp/event-dispatcher.c | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/lib/wp/event-dispatcher.c b/lib/wp/event-dispatcher.c
+index d37b53a3..9b4f1e5c 100644
+--- a/lib/wp/event-dispatcher.c
++++ b/lib/wp/event-dispatcher.c
+@@ -260,7 +260,7 @@ wp_event_source_dispatch (GSource * s, GSourceFunc callback, gpointer user_data)
+ 
+   /* get the highest priority event */
+   GList *levent = g_list_first (d->events);
+-  while (levent) {
++  if (levent) {
+     EventData *event_data = (EventData *) (levent->data);
+     WpEvent *event = event_data->event;
+     GCancellable *cancellable = wp_event_get_cancellable (event);
+@@ -300,6 +300,8 @@ wp_event_source_dispatch (GSource * s, GSourceFunc callback, gpointer user_data)
+ 
+     /* get the next event */
+     levent = g_list_first (d->events);
++    if (levent && !((EventData *) levent->data)->current_hook_in_async)
++      spa_system_eventfd_write (d->system, d->eventfd, 1);
+   }
+ 
+   return G_SOURCE_CONTINUE;
+-- 
+2.20.1
+
