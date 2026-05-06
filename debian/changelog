@@ -1,8 +1,18 @@
+wireplumber (0.5.14-1deepin2) unstable; urgency=medium
+
+  * Backport three fixes (module memleak, BT autoswitch, event dispatch)
+    to 0.5.14:
+        - 478c940: module: Call parent destructor before finalizing
+        - 78bd42c: bluez: Don't set bluez5.autoswitch-routes on BT devices
+        - 374c48b: event-dispatcher: Dispatch one event at a time
+
+ -- zhaochengyi <zhaochengyi@uniontech.com>  Wed, 06 May 2026 18:06:07 +0800
+
 wireplumber (0.5.14-1deepin1) unstable; urgency=medium
 
   * fix: Adapt volume algorithm to match pipewire's power scale patch
 
- -- anguoli <zcy@zcy-PC>  Wed, 06 May 2026 18:02:57 +0800
+ -- anguoli <anguoli@uniontech.com>  Wed, 06 May 2026 18:02:57 +0800
 
 wireplumber (0.5.14-1) unstable; urgency=medium
 
