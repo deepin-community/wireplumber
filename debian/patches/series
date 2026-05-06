@@ -1,2 +1,5 @@
 Remove-privacy-breach-documentation.patch
 Fix-Optimize-the-volume-algorithm.patch
+0001-event-dispatcher-Dispatch-one-event-at-a-time.patch
+0002-bluez-Don-t-set-bluez5.autoswitch-routes-on-BT-devic.patch
+0003-module-Call-parent-s-destructor-before-finalizing.patch
