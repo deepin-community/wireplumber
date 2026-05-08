@@ -1,10 +1,18 @@
+wireplumber (0.5.14-1deepin3) unstable; urgency=medium
+
+  * Fix Lua GC crash on exit.
+      - registry: Deactivate all objects before clearing the registry
+      - m-lua-scripting: Deactivate all scripts before deactivating module
+
+ -- zhaochengyi <zhaochengyi@uniontech.com>  Fri, 08 May 2026 15:32:15 +0800
+
 wireplumber (0.5.14-1deepin2) unstable; urgency=medium
 
   * Backport three fixes (module memleak, BT autoswitch, event dispatch)
     to 0.5.14:
-        - 478c940: module: Call parent destructor before finalizing
-        - 78bd42c: bluez: Don't set bluez5.autoswitch-routes on BT devices
-        - 374c48b: event-dispatcher: Dispatch one event at a time
+      - 478c940: module: Call parent destructor before finalizing
+      - 78bd42c: bluez: Don't set bluez5.autoswitch-routes on BT devices
+      - 374c48b: event-dispatcher: Dispatch one event at a time
 
  -- zhaochengyi <zhaochengyi@uniontech.com>  Wed, 06 May 2026 18:06:07 +0800
 
