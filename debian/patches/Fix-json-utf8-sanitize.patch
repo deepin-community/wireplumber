@@ -1,0 +1,97 @@
+Index: my-wireplumber/src/scripts/default-nodes/rescan.lua
+===================================================================
+--- my-wireplumber.orig/src/scripts/default-nodes/rescan.lua
++++ my-wireplumber/src/scripts/default-nodes/rescan.lua
+@@ -11,6 +11,78 @@ lutils = require ("linking-utils")
+ 
+ log = Log.open_topic ("s-default-nodes")
+ 
++-- Sanitize a string so it is valid UTF-8, replacing invalid sequences with
++-- the Unicode replacement character (U+FFFD). WirePlumber's JSON serializer
++-- crashes on property values that contain invalid UTF-8 bytes (observed on
++-- HDMI nodes where api.alsa.card.longname contains garbage bytes).
++local REPLACEMENT = "\xEF\xBF\xBD"
++local function sanitize_utf8 (s)
++  local out = {}
++  local i = 1
++  local n = #s
++  while i <= n do
++    local c = s:byte (i)
++    if c < 0x80 then
++      out [#out + 1] = s:sub (i, i)
++      i = i + 1
++    elseif c < 0xC0 then
++      -- stray continuation byte
++      out [#out + 1] = REPLACEMENT
++      i = i + 1
++    elseif c < 0xE0 then
++      -- 2-byte sequence
++      if i + 1 <= n then
++        local c2 = s:byte (i + 1)
++        if c2 >= 0x80 and c2 < 0xC0 then
++          out [#out + 1] = s:sub (i, i + 1)
++          i = i + 2
++        else
++          out [#out + 1] = REPLACEMENT
++          i = i + 1
++        end
++      else
++        out [#out + 1] = REPLACEMENT
++        i = i + 1
++      end
++    elseif c < 0xF0 then
++      -- 3-byte sequence
++      if i + 2 <= n then
++        local c2, c3 = s:byte (i + 1, i + 2)
++        if c2 >= 0x80 and c2 < 0xC0 and c3 >= 0x80 and c3 < 0xC0 then
++          out [#out + 1] = s:sub (i, i + 2)
++          i = i + 3
++        else
++          out [#out + 1] = REPLACEMENT
++          i = i + 1
++        end
++      else
++        out [#out + 1] = REPLACEMENT
++        i = i + 1
++      end
++    elseif c < 0xF8 then
++      -- 4-byte sequence
++      if i + 3 <= n then
++        local c2, c3, c4 = s:byte (i + 1, i + 3)
++        if c2 >= 0x80 and c2 < 0xC0 and c3 >= 0x80 and c3 < 0xC0 and
++           c4 >= 0x80 and c4 < 0xC0 then
++          out [#out + 1] = s:sub (i, i + 3)
++          i = i + 4
++        else
++          out [#out + 1] = REPLACEMENT
++          i = i + 1
++        end
++      else
++        out [#out + 1] = REPLACEMENT
++        i = i + 1
++      end
++    else
++      out [#out + 1] = REPLACEMENT
++      i = i + 1
++    end
++  end
++  return table.concat (out)
++end
++
+ -- looks for changes in user-preferences and devices added/removed and schedules
+ -- rescan
+ SimpleEventHook {
+@@ -113,7 +185,12 @@ function collectAvailableNodes (si_om, d
+       goto next_linkable
+     end
+ 
+-    table.insert (collected, Json.Object (node_props))
++    -- sanitize property values to avoid JSON serializer crashes on invalid UTF-8
++    local sanitized_props = {}
++    for k, v in pairs (node_props) do
++      sanitized_props[k] = sanitize_utf8 (v)
++    end
++    table.insert (collected, Json.Object (sanitized_props))
+ 
+     ::next_linkable::
+   end

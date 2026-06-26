@@ -5,3 +5,4 @@ Fix-Optimize-the-volume-algorithm.patch
 0003-module-Call-parent-s-destructor-before-finalizing.patch
 0004-m-lua-scripting-Deactivate-all-scripts-before-deacti.patch
 0005-registry-Deactivate-all-objects-before-clearing-the-.patch
+Fix-json-utf8-sanitize.patch
