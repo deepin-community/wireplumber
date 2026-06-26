@@ -1,3 +1,9 @@
+wireplumber (0.5.14-1deepin4) unstable; urgency=medium
+
+  * fix: Json-utf8-sanitize
+
+ -- liujiahe <liujiahe@uniontech.com>  Fri, 26 Jun 2026 16:29:49 +0800
+
 wireplumber (0.5.14-1deepin3) unstable; urgency=medium
 
   * Fix Lua GC crash on exit.
