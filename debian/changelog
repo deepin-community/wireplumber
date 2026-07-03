@@ -1,3 +1,10 @@
+wireplumber (0.5.14-1deepin5) unstable; urgency=medium
+
+  * Only use 'media.role' key if its value is 'Notification' when
+    forming key in state-stream
+
+ -- deepin-ci-robot <packages@deepin.org>  Fri, 03 Jul 2026 18:13:06 +0800
+
 wireplumber (0.5.14-1deepin4) unstable; urgency=medium
 
   * fix: Json-utf8-sanitize
